@@ -1,0 +1,43 @@
+# Render Blueprint: two web services from one repo. Secrets are `sync: false`:
+# Render asks for them once when the Blueprint is created, then they live in the dashboard.
+# Phase 0 declares only what Phase 0 needs; later phases append their own vars.
+services:
+  - type: web
+    name: agenttrace-api
+    runtime: python
+    rootDir: api
+    plan: free # Phase 10: switch to starter so it never sleeps mid-demo
+    buildCommand: pip install .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENV
+        value: prod
+      - key: WEB_ORIGINS # the agenttrace-web URL, e.g. https://agenttrace-web.onrender.com
+        sync: false
+      - key: SURREAL_URL
+        sync: false
+      - key: SURREAL_NS
+        sync: false
+      - key: SURREAL_DB
+        sync: false
+      - key: SURREAL_USER
+        sync: false
+      - key: SURREAL_PASS
+        sync: false
+
+  - type: web
+    name: agenttrace-web
+    runtime: node
+    rootDir: web
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.2
+      # Inlined at BUILD time: set before the first build, and redeploy after changing it.
+      - key: NEXT_PUBLIC_API_URL # the agenttrace-api URL
+        sync: false
