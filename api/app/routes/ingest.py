@@ -1,0 +1,52 @@
+"""SDK -> API. Authenticated by a per-workspace ingest key; every call is scoped to that
+key's workspace. Safe to retry: run creation and step insertion are idempotent."""
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from app import db
+from app.auth import ingest_workspace
+from app.models import RunCreate, RunFinish, Step, StepBatch
+from agenttrace_sdk import redact
+
+router = APIRouter(prefix="/v1")
+
+
+def _prepare(step: Step, run_id: str) -> dict[str, Any]:
+    """Re-redact (the SDK may be misconfigured) and pin the step to the run in the URL."""
+    doc = step.model_dump()
+    earlier = doc.pop("redactions")
+    clean, found = redact(doc)
+    clean["run"] = run_id
+    clean["redactions"] = earlier + found
+    return clean
+
+
+@router.post("/runs", status_code=201)
+async def create_run(body: RunCreate, workspace: str = Depends(ingest_workspace)) -> dict[str, str]:
+    try:
+        await db.create_run(workspace, body.id, body.workflow, body.started_at)
+    except db.RunConflict:
+        raise HTTPException(status_code=409, detail="Run id already in use") from None
+    return {"id": body.id}
+
+
+@router.post("/runs/{run_id}/steps")
+async def add_steps(
+    run_id: str, body: StepBatch, workspace: str = Depends(ingest_workspace)
+) -> dict[str, int]:
+    if not await db.run_exists(workspace, run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    steps = [_prepare(s, run_id) for s in body.steps]
+    return {"received": len(steps), "added": await db.add_steps(workspace, run_id, steps)}
+
+
+@router.post("/runs/{run_id}/finish")
+async def finish_run(
+    run_id: str, body: RunFinish, workspace: str = Depends(ingest_workspace)
+) -> dict[str, str]:
+    detail, _ = redact(body.oracle_detail) if body.oracle_detail is not None else (None, [])
+    if not await db.finish_run(workspace, run_id, body.status, body.outcome, detail):
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {"id": run_id, "status": body.status}
