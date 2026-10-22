@@ -38,6 +38,7 @@ reports success rates (e.g. 0/5 -> 4/5). A root-cause (RCA) agent ranks suspect 
 - One `.env` at the repo root (gitignored). `.env.example` lists names only. api loads it with
   python-dotenv, web with `@next/env` (see `web/next.config.ts`). Real env vars win over the file.
 - api dev: `cd api && python3.11 -m venv .venv && .venv/bin/pip install -e '.[dev]' && .venv/bin/pytest`
+- sdk tests: `api/.venv/bin/pytest sdk/` (stdlib-only package, no install needed; `sdk/pyproject.toml` sets pythonpath)
 - web dev: `cd web && npm install && npm run dev`
 - web/AGENTS.md says this Next.js has breaking changes: read `web/node_modules/next/dist/docs/` before
   writing Next code.
