@@ -14,7 +14,9 @@ load_dotenv(REPO_ROOT / ".env")
 
 # Models
 DEMO_MODEL = "claude-haiku-5-5"
-DEMO_TEMPERATURE = 0.7
+# claude-haiku-5-5 rejects non-default temperature/top_p/top_k (400), and anthropic 2.x has no
+# `temperature` argument. Sampling stays at the API default; effort is the control we set.
+DEMO_EFFORT = "low"
 RCA_MODEL = "claude-sonnet-5-5"
 
 DB_CONNECT_TIMEOUT_S = 5.0
@@ -42,6 +44,9 @@ class Settings:
     surreal_token: str
     surreal_auth_level: str
 
+    tools_backend: str
+    demo_account_id: str
+
     max_n: int
     max_tokens_per_experiment: int
     daily_experiments_per_user: int
@@ -65,6 +70,8 @@ def get_settings() -> Settings:
         surreal_pass=_env("SURREAL_PASS"),
         surreal_token=_env("SURREAL_TOKEN"),
         surreal_auth_level=_env("SURREAL_AUTH_LEVEL", "root").lower(),
+        tools_backend=_env("TOOLS_BACKEND", "fixtures").lower(),
+        demo_account_id=_env("DEMO_ACCOUNT_ID", "acct-1"),
         max_n=_env_int("MAX_N", 8),
         max_tokens_per_experiment=_env_int("MAX_TOKENS_PER_EXPERIMENT", 500_000),
         daily_experiments_per_user=_env_int("DAILY_EXPERIMENTS_PER_USER", 10),
