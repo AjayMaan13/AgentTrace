@@ -175,21 +175,6 @@ def test_node_run_idx_counts_runs_not_names():
     assert all(s["state_after"] is not None for s in steps)  # one step per node run
 
 
-def test_node_with_no_calls_still_gets_a_step_to_hold_state_after():
-    @node("pure", reads=["a"], writes=["b"])
-    async def pure(state, llm, tools):
-        return {"b": state["a"] + 1}
-
-    async def go(sink):
-        async with trace_run("w", sink) as r:
-            await pure({"a": 1}, None, None)
-        return r
-
-    sink = ListSink()
-    (step,) = sink.steps_for(run(go(sink)).id)
-    assert step["tool_name"] == "__node__" and step["state_after"] == {"a": 1, "b": 2}
-
-
 def test_undeclared_write_fails_loudly_and_marks_the_run_as_error():
     @node("sloppy", reads=[], writes=["declared"])
     async def sloppy(state, llm, tools):
@@ -204,24 +189,6 @@ def test_undeclared_write_fails_loudly_and_marks_the_run_as_error():
         run(go(sink))
     (rec,) = sink.runs.values()
     assert rec["status"] == "error"
-
-
-def test_steps_of_a_node_that_crashes_are_still_flushed():
-    @node("crashy", reads=[], writes=["x"])
-    async def crashy(state, llm, tools):
-        await llm.create(model="m", messages=[{"role": "user", "content": "hi"}])
-        raise ValueError("boom")
-
-    async def go(sink):
-        async with trace_run("w", sink):
-            await crashy({}, TracedLLM(FakeClient(["r"]), "crashy"), None)
-
-    sink = ListSink()
-    with pytest.raises(ValueError, match="boom"):
-        run(go(sink))
-    (step,) = sink.steps
-    assert step["kind"] == "llm" and step["state_after"] is None
-    assert next(iter(sink.runs.values()))["status"] == "error"
 
 
 def test_llm_call_outside_a_node_inside_a_run_is_an_error_and_makes_no_api_call():

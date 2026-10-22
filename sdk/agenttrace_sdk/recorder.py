@@ -8,7 +8,6 @@ returned; only the stored copy is redacted. Outside `trace_run` everything passe
 untraced, so the same workflow code can run with or without recording.
 """
 
-import dataclasses
 import functools
 import hashlib
 import inspect
@@ -30,7 +29,6 @@ from agenttrace_sdk.context import (
 from agenttrace_sdk.redaction import redact
 from agenttrace_sdk.sinks import Sink
 
-NO_CALL_TOOL_NAME = "__node__"
 _LLM_INPUT_KEYS = ("system", "messages", "tools")
 
 
@@ -48,13 +46,11 @@ def _to_jsonable(obj: Any) -> Any:
         return obj
     if isinstance(obj, dict):
         return {str(k): _to_jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple, set)):
+    if isinstance(obj, (list, tuple)):
         return [_to_jsonable(v) for v in obj]
     dump = getattr(obj, "model_dump", None)
     if callable(dump):
         return _to_jsonable(dump(mode="json"))
-    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return _to_jsonable(dataclasses.asdict(obj))
     return str(obj)
 
 
@@ -169,8 +165,8 @@ def node(
 
     Each call is one node run: it gets the next `node_run_idx`, stamps the declared reads and
     writes on its steps, and attaches the redacted, fully merged `state_after` to its LAST step
-    (the state a fork restores). A node that makes no LLM or tool call still gets one marker
-    step so its state_after has somewhere to live.
+    (the state a fork restores), so a node should make at least one LLM or tool call. If a node
+    raises, its steps are not sent; the run is closed with status 'error'.
     """
 
     def decorator(fn: Callable[..., Awaitable[dict[str, Any]]]):
@@ -183,16 +179,12 @@ def node(
             ctx = NodeContext(name, tuple(reads), tuple(writes), run.next_node_run_idx())
             token = current_node.set(ctx)
             try:
-                try:
-                    updates = await fn(state, *args, **kwargs)
-                    _check_updates(ctx, updates)
-                    _attach_state_after(ctx, state, updates)
-                finally:
-                    # Flush even on failure, so a crashing node's steps are still debuggable.
-                    if ctx.steps:
-                        await run.sink.add_steps(run.id, [s.to_dict() for s in ctx.steps])
+                updates = await fn(state, *args, **kwargs)
             finally:
                 current_node.reset(token)
+            _check_updates(ctx, updates)
+            _attach_state_after(ctx, state, updates)
+            await run.sink.add_steps(run.id, [s.to_dict() for s in ctx.steps])
             return updates
 
         return wrapper
@@ -211,23 +203,13 @@ def _check_updates(ctx: NodeContext, updates: Any) -> None:
 
 
 def _attach_state_after(ctx: NodeContext, state: dict[str, Any], updates: dict[str, Any]) -> None:
-    if not ctx.steps:
-        _record_step(
-            kind="tool",
-            agent=ctx.name,
-            tool_name=NO_CALL_TOOL_NAME,
-            tool_args={},
-            tool_result=updates,
-            side_effect=False,
-        )
-    last = ctx.steps[-1]
-    last.state_after = _clean("state_after", {**state, **updates}, last.redactions)
+    if ctx.steps:
+        last = ctx.steps[-1]
+        last.state_after = _clean("state_after", {**state, **updates}, last.redactions)
 
 
 def _usage(response: Any, name: str) -> int:
-    usage = getattr(response, "usage", None)
-    value = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, None)
-    return int(value or 0)
+    return int(getattr(getattr(response, "usage", None), name, 0) or 0)
 
 
 class TracedLLM:
