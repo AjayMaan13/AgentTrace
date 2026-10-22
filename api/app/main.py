@@ -1,9 +1,11 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import db
 from app.config import get_settings
-from app.routes import experiments, ingest, rca, runs
+from app.routes import experiments, ingest, public, rca, runs
 
 settings = get_settings()
 
@@ -21,8 +23,10 @@ app.include_router(ingest.router)
 app.include_router(runs.router)
 app.include_router(experiments.router)
 app.include_router(rca.router)
+app.include_router(public.router)
 
 
 @app.get("/health")
 async def health() -> dict[str, bool]:
-    return {"ok": True, "db": await db.ping()}
+    # The key's presence only: a paid call on every health check would be wasteful.
+    return {"ok": True, "db": await db.ping(), "anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())}

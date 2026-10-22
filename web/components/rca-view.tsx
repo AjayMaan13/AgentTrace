@@ -2,7 +2,7 @@ import type { Candidate, RcaReport } from "@/lib/types";
 
 /** Root-cause candidates, ranked. The agent proposes; experiments decide. */
 export function RcaView({
-  report, agentOf, canRun, busy, error, onFind, onTest,
+  report, agentOf, canRun, busy, error, onFind, onTest, readOnly = false,
 }: {
   report: RcaReport | null;
   agentOf: (nodeRunIdx: number) => string;
@@ -11,24 +11,26 @@ export function RcaView({
   error: string | null;
   onFind: () => void;
   onTest: (candidate: Candidate) => void;
+  readOnly?: boolean; // the public demo shows a saved report: nothing to run or test
 }) {
   return (
     <section aria-label="Root cause" className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
       <h2 className="text-lg font-semibold">Root cause</h2>
       <p className="text-sm text-zinc-700 dark:text-zinc-300">
         An AI agent reads the trace and follows the data back from the wrong answer. It ranks hypotheses; it does
-        not decide. Use <b>Test this</b> to run an experiment with a control arm.
+        not decide.{" "}
+        {readOnly ? "The experiments below test its proposals." : <>Use <b>Test this</b> to run an experiment with a control arm.</>}
       </p>
 
-      <button
+      {!readOnly && <button
         type="button"
         onClick={onFind}
         disabled={!canRun || busy}
         className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
       >
         {busy ? "Analysing the trace…" : report ? "Analyse again" : "Find root cause"}
-      </button>
-      {!canRun && (
+      </button>}
+      {!readOnly && !canRun && (
         <p className="text-xs text-zinc-600 dark:text-zinc-400">Root-cause analysis is for runs that failed the oracle.</p>
       )}
       <p role="alert" className="min-h-4 text-sm text-red-800 dark:text-red-300">
@@ -71,7 +73,13 @@ export function RcaView({
                     </ul>
                   </div>
                 )}
-                {c.proposed_edit ? (
+                {readOnly ? (
+                  c.proposed_edit && (
+                    <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
+                      Proposed edit: change {Object.keys(c.proposed_edit.patch).join(", ")}
+                    </p>
+                  )
+                ) : c.proposed_edit ? (
                   <button
                     type="button"
                     onClick={() => onTest(c)}

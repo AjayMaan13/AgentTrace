@@ -5,11 +5,19 @@ import { ForkPanel } from "@/components/fork-panel";
 import { Inspector } from "@/components/inspector";
 import { Lanes } from "@/components/lanes";
 import { RcaPanel } from "@/components/rca-panel";
+import { RcaView } from "@/components/rca-view";
 import { OutcomeBadge } from "@/components/badges";
 import { formatTime, formatTokens, shortId } from "@/lib/format";
-import type { Candidate, OracleDetail, Run, State } from "@/lib/types";
+import Link from "next/link";
+import type { Candidate, OracleDetail, RcaReport, Run, State } from "@/lib/types";
 
-export function RunView({ run }: { run: Run }) {
+/** `mode="demo"` is the public, read-only view: it shows a saved root-cause report, and offers
+ * sign-in instead of the panels that spend tokens. */
+export function RunView({
+  run, mode = "app", report = null, titleLevel = 1,
+}: { run: Run; mode?: "app" | "demo"; report?: RcaReport | null; titleLevel?: 1 | 2 }) {
+  const Title = titleLevel === 1 ? "h1" : "h2";
+  const agents = new Map(run.steps.map((s) => [s.node_run_idx, s.agent]));
   const [selected, setSelected] = useState<number | null>(run.steps.length ? Math.min(...run.steps.map((s) => s.idx)) : null);
   const step = run.steps.find((s) => s.idx === selected) ?? null;
   const [forkRequest, setForkRequest] = useState<{ nodeRunIdx: number; patch: State; nonce: number } | null>(null);
@@ -29,7 +37,7 @@ export function RunView({ run }: { run: Run }) {
     <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Run {shortId(run.id)}</h1>
+          <Title className="text-2xl font-semibold tracking-tight">Run {shortId(run.id)}</Title>
           <OutcomeBadge outcome={run.outcome} status={run.status} />
           {run.kind === "fork" && (
             <span className="rounded border border-violet-600 px-1.5 py-0.5 text-xs text-violet-800 dark:border-violet-400 dark:text-violet-200">
@@ -53,9 +61,30 @@ export function RunView({ run }: { run: Run }) {
           <Inspector step={step} steps={run.steps} />
         </div>
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
-          <RcaPanel run={run} onTest={testCandidate} />
-          {/* Remounted on each "Test this" so it starts from the proposed edit. */}
-          <ForkPanel key={`${run.id}-${forkRequest?.nonce ?? 0}`} run={run} request={forkRequest} />
+          {mode === "app" ? (
+            <>
+              <RcaPanel run={run} onTest={testCandidate} />
+              {/* Remounted on each "Test this" so it starts from the proposed edit. */}
+              <ForkPanel key={`${run.id}-${forkRequest?.nonce ?? 0}`} run={run} request={forkRequest} />
+            </>
+          ) : (
+            <>
+              {report && (
+                <RcaView report={report} agentOf={(i) => agents.get(i) ?? "?"} canRun={false} busy={false}
+                  error={null} onFind={() => {}} onTest={() => {}} readOnly />
+              )}
+              <section className="rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700">
+                <h2 className="text-lg font-semibold">Fork a run yourself</h2>
+                <p className="mt-1 text-zinc-700 dark:text-zinc-300">
+                  This is a read-only demo of saved results. Sign in to record your own runs, edit a step, and
+                  run your own control-versus-treatment experiment.
+                </p>
+                <Link href="/sign-in" className="mt-3 inline-block rounded-md bg-zinc-900 px-4 py-2 font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">
+                  Sign in
+                </Link>
+              </section>
+            </>
+          )}
         </div>
       </div>
     </div>

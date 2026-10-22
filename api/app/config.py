@@ -48,6 +48,7 @@ class Settings:
     surreal_auth_level: str
 
     dev_workspace_id: str  # local scripts only; the API itself never uses it
+    demo_workspace_id: str  # the one workspace the public /demo routes may serve
     clerk_issuer: str
     clerk_jwks_url: str
 
@@ -78,6 +79,7 @@ def get_settings() -> Settings:
         surreal_token=_env("SURREAL_TOKEN"),
         surreal_auth_level=_env("SURREAL_AUTH_LEVEL", "root").lower(),
         dev_workspace_id=_env("DEV_WORKSPACE_ID"),
+        demo_workspace_id=_env("DEMO_WORKSPACE_ID", "demo"),
         clerk_issuer=_env("CLERK_ISSUER").rstrip("/"),
         clerk_jwks_url=_env("CLERK_JWKS_URL"),
         tools_backend=_env("TOOLS_BACKEND", "fixtures").lower(),

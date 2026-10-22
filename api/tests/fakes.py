@@ -86,6 +86,25 @@ class FakeDB:
                 "tokens_in": sum(s["tokens_in"] for s in steps),
                 "tokens_out": sum(s["tokens_out"] for s in steps)}
 
+    async def clear_featured(self, ws):
+        for r in self.runs.values():
+            if r["workspace"] == ws:
+                r["featured"] = False
+        for e in self.experiments.values():
+            if e["workspace"] == ws:
+                e["featured"] = False
+
+    async def set_run_featured(self, ws, run_id):
+        if await self.run_exists(ws, run_id):
+            self.runs[run_id]["featured"] = True
+
+    async def get_featured_run_id(self, ws):
+        mine = [r for r in self.runs.values() if r["workspace"] == ws and r.get("featured")]
+        return max(mine, key=lambda r: r["started_at"])["id"] if mine else None
+
+    async def list_featured_experiments(self, ws):
+        return [{**e} for e in self.experiments.values() if e["workspace"] == ws and e.get("featured")]
+
     async def create_rca_report(self, ws, report_id, doc):
         self.rca_reports.append({**doc, "id": report_id, "workspace": ws})
 
@@ -97,4 +116,5 @@ class FakeDB:
 DB_FUNCTIONS = ("workspace_for_key_hash", "create_run", "run_exists", "add_steps", "finish_run",
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
                 "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
-                "get_run_summary", "create_rca_report", "get_latest_rca_report")
+                "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",
+                "get_featured_run_id", "list_featured_experiments")

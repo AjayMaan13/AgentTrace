@@ -20,7 +20,7 @@ SURREAL_VARS = [
 @pytest.fixture(autouse=True)
 def clean_surreal_env(monkeypatch):
     """Tests must not depend on (or reach) whatever the developer put in .env."""
-    for name in SURREAL_VARS:
+    for name in [*SURREAL_VARS, "ANTHROPIC_API_KEY"]:
         monkeypatch.delenv(name, raising=False)
 
 
@@ -36,7 +36,17 @@ def test_health_reports_db_true_when_connection_succeeds(client, monkeypatch):
     monkeypatch.setattr(db, "ping", ok)
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "db": True}
+    assert resp.json() == {"ok": True, "db": True, "anthropic_key": False}
+
+
+def test_health_reports_whether_an_anthropic_key_is_present_without_exposing_it(client, monkeypatch):
+    async def ok() -> bool:
+        return True
+
+    monkeypatch.setattr(db, "ping", ok)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-notarealkey0123456789")
+    body = client.get("/health").json()
+    assert body["anthropic_key"] is True and "sk-ant" not in str(body)
 
 
 def test_health_is_200_with_db_false_when_db_down(client, monkeypatch):
@@ -46,7 +56,7 @@ def test_health_is_200_with_db_false_when_db_down(client, monkeypatch):
     monkeypatch.setattr(db, "ping", down)
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "db": False}
+    assert resp.json() == {"ok": True, "db": False, "anthropic_key": False}
 
 
 def test_ping_is_false_when_surreal_not_configured():

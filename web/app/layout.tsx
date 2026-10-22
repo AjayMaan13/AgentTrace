@@ -42,6 +42,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             {/* Cache Components: request data (the session) must be read inside Suspense. */}
             <Suspense>
               <nav className="flex items-center gap-3 sm:gap-4">
+                <Link href="/demo" className="text-sm underline-offset-4 hover:underline">
+                  Demo
+                </Link>
                 <Show when="signed-out">
                   <SignInButton />
                   <SignUpButton />

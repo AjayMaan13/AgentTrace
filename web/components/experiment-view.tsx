@@ -5,15 +5,25 @@ import type { Experiment, Tile } from "@/lib/types";
 
 export const isFinished = (e: Experiment) => !["queued", "running"].includes(e.status);
 
-export function ExperimentView({ experiment: e }: { experiment: Experiment }) {
+export function ExperimentView({
+  experiment: e, title, blurb, runHref = (id) => `/runs/${id}`, level = 1,
+}: {
+  experiment: Experiment;
+  title?: string;
+  blurb?: string;
+  runHref?: (runId: string) => string; // where a run link points (the demo has its own public pages)
+  level?: 1 | 2;
+}) {
+  const Heading = level === 1 ? "h1" : "h2";
   const finished = e.tiles.filter((t) => t.status === "done" || t.status === "skipped").length;
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Experiment {shortId(e.id)}</h1>
+        <Heading className="text-2xl font-semibold tracking-tight">{title ?? `Experiment ${shortId(e.id)}`}</Heading>
+        {blurb && <p className="text-base text-zinc-700 dark:text-zinc-300">{blurb}</p>}
         <p className="text-sm text-zinc-700 dark:text-zinc-300">
           Forked from{" "}
-          <Link href={`/runs/${e.parent_run}`} className="font-mono underline underline-offset-4">
+          <Link href={runHref(e.parent_run)} className="font-mono underline underline-offset-4">
             run {shortId(e.parent_run)}
           </Link>{" "}
           at node run {e.fork_node_run_idx} · {e.n} runs per arm
@@ -31,7 +41,7 @@ export function ExperimentView({ experiment: e }: { experiment: Experiment }) {
               <ul className="flex flex-wrap gap-2">
                 {e.tiles.filter((t) => t.arm === arm).map((t) => (
                   <li key={`${t.arm}-${t.i}`}>
-                    <TileCell tile={t} />
+                    <TileCell tile={t} runHref={runHref} />
                   </li>
                 ))}
               </ul>
@@ -75,7 +85,8 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
           "Fisher p-value appears once both arms have finished a run"
         ) : (
           <>
-            Fisher exact p ≈ <b>{formatP(stats.fisher_p)}</b> · {stats.label}
+            Fisher exact p {stats.fisher_p < 0.001 ? "" : "≈ "}
+            <b>{formatP(stats.fisher_p)}</b> · {stats.label}
           </>
         )}
       </p>
@@ -117,7 +128,7 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
 
 const TILE_BASE = "flex h-10 w-10 items-center justify-center rounded-md text-base font-bold";
 
-function TileCell({ tile }: { tile: Tile }) {
+function TileCell({ tile, runHref }: { tile: Tile; runHref: (runId: string) => string }) {
   let className = `${TILE_BASE} bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400`;
   let glyph = "";
   let label = "queued";
@@ -142,7 +153,7 @@ function TileCell({ tile }: { tile: Tile }) {
   }
   const full = `${tile.arm} run ${tile.i}: ${label}`;
   return tile.run_id ? (
-    <Link href={`/runs/${tile.run_id}`} className={`${className} hover:ring-2 hover:ring-zinc-900 dark:hover:ring-zinc-100`} aria-label={`${full}, open run`} title={full}>
+    <Link href={runHref(tile.run_id)} className={`${className} hover:ring-2 hover:ring-zinc-900 dark:hover:ring-zinc-100`} aria-label={`${full}, open run`} title={full}>
       {glyph}
     </Link>
   ) : (

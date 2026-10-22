@@ -331,6 +331,39 @@ async def get_latest_rca_report(workspace: str, run_id: str) -> dict[str, Any] |
     return _row(rows[0]) if rows else None
 
 
+# --- featured demo content --------------------------------------------------------------------
+
+async def clear_featured(workspace: str) -> None:
+    """Un-feature everything in a workspace, so a re-seed leaves exactly one featured set."""
+    async with connect() as c:
+        await c.query("UPDATE run SET featured = false WHERE workspace = $ws AND featured = true", {"ws": workspace})
+        await c.query("UPDATE experiment SET featured = false WHERE workspace = $ws AND featured = true", {"ws": workspace})
+
+
+async def set_run_featured(workspace: str, run_id: str) -> None:
+    async with connect() as c:
+        await c.query(
+            "UPDATE type::record('run', $id) SET featured = true WHERE workspace = $ws", {"id": run_id, "ws": workspace}
+        )
+
+
+async def get_featured_run_id(workspace: str) -> str | None:
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT id FROM run WHERE workspace = $ws AND featured = true ORDER BY started_at DESC LIMIT 1",
+            {"ws": workspace},
+        )
+    return rows[0]["id"].id if rows else None
+
+
+async def list_featured_experiments(workspace: str) -> list[dict[str, Any]]:
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM experiment WHERE workspace = $ws AND featured = true", {"ws": workspace}
+        )
+    return [_row(r) for r in rows]
+
+
 # --- test / smoke cleanup --------------------------------------------------------------------
 
 async def purge_workspace(workspace: str) -> None:

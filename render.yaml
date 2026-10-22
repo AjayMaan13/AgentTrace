@@ -31,6 +31,21 @@ services:
         sync: false
       - key: CLERK_JWKS_URL # <issuer>/.well-known/jwks.json
         sync: false
+      # Live experiments and root-cause analysis run on the server, so it needs these:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TOOLS_BACKEND
+        value: era
+      - key: DEMO_ACCOUNT_ID # the Era account the demo workflow writes a brief for
+        value: acct-103
+      - key: ZENDESK_BASE_URL # the four values Era generated; copy them from your local .env
+        sync: false
+      - key: ZENDESK_MCP_HEADER # contains the Era token: it expires, see the README
+        sync: false
+      - key: SALESFORCE_BASE_URL
+        sync: false
+      - key: SALESFORCE_MCP_HEADER
+        sync: false
 
   - type: web
     name: agenttrace-web
