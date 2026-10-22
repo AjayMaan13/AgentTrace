@@ -32,6 +32,10 @@ from agenttrace_sdk.sinks import Sink
 _LLM_INPUT_KEYS = ("system", "messages", "tools")
 
 
+class SideEffectBlocked(RuntimeError):
+    """A side-effecting tool was called in a live run (a fork) without a registered mock."""
+
+
 class UndeclaredWriteError(RuntimeError):
     """A node returned state keys it did not declare in `writes=`.
 
@@ -130,15 +134,26 @@ def _record_step(
 
 @asynccontextmanager
 async def trace_run(
-    workflow_name: str, sink: Sink, *, origin: str = "recorded"
+    workflow_name: str,
+    sink: Sink,
+    *,
+    origin: str = "recorded",
+    start_idx: int = 0,
+    start_node_run_idx: int = 0,
+    mocks: dict[str, Callable[..., Awaitable[Any]]] | None = None,
 ) -> AsyncIterator[RunContext]:
     """Start a run, make it the current one, and close it (status 'ok' or 'error') on exit.
 
     Yields the RunContext; `run.id` is the run id. Set `run.outcome` ('pass' | 'fail') and
     `run.oracle_detail` before the block ends to record the oracle's verdict. `origin` is stamped on every step: the
-    recorder uses 'recorded', and Phase 5's live suffix will pass 'live'.
+    recorder uses 'recorded', and a fork's live suffix passes 'live'. A fork also passes
+    `start_idx` / `start_node_run_idx` (the numbering of the steps it copied) and `mocks`:
+    in a 'live' run a side-effecting @tool only runs through a mock registered by tool name.
     """
-    run = RunContext(uuid4().hex, workflow_name, origin, sink)
+    run = RunContext(
+        uuid4().hex, workflow_name, origin, sink,
+        start_idx=start_idx, start_node_run_idx=start_node_run_idx, mocks=mocks,
+    )
     await sink.start_run(
         {
             "id": run.id,
@@ -266,17 +281,26 @@ def tool(side_effect: bool) -> Callable[[Callable[..., Awaitable[Any]]], Callabl
 
         @functools.wraps(fn)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            if current_run.get() is None:
+            run = current_run.get()
+            if run is None:
                 return await fn(*args, **kwargs)
             node = _require_node()
-
-            started = time.perf_counter()
-            result = await fn(*args, **kwargs)
-            latency_ms = int((time.perf_counter() - started) * 1000)
 
             bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
             arguments = {k: v for k, v in bound.arguments.items() if k not in ("self", "cls")}
+
+            mock = None
+            if side_effect and run.origin == "live":
+                mock = run.mocks.get(fn.__name__)
+                if mock is None:
+                    raise SideEffectBlocked(
+                        f"tool {fn.__name__!r} has side effects and no mock is registered for this fork"
+                    )
+
+            started = time.perf_counter()
+            result = await (mock(**arguments) if mock else fn(*args, **kwargs))
+            latency_ms = int((time.perf_counter() - started) * 1000)
             _record_step(
                 kind="tool",
                 agent=node.name,

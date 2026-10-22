@@ -295,3 +295,51 @@ def test_a_crashed_run_gets_outcome_error():
     with pytest.raises(ValueError):
         run(go(sink))
     assert next(iter(sink.runs.values()))["outcome"] == "error"
+
+
+# --- fork support: start offsets and the side-effect guard ---------------------------------
+
+def test_a_fork_continues_step_and_node_run_numbering_from_the_given_offsets():
+    async def go(sink):
+        async with trace_run("w", sink, origin="live", start_idx=5, start_node_run_idx=2) as r:
+            await planner({"request": "r"}, TracedLLM(FakeClient(["p"]), "planner"), None)
+        return r
+
+    sink = ListSink()
+    (s,) = sink.steps_for(run(go(sink)).id)
+    assert (s["idx"], s["node_run_idx"], s["origin"]) == (6, 3, "live")
+
+
+def _email_node():
+    @node("mailer", reads=[], writes=["sent"])
+    async def mailer(state, llm, tools):
+        return {"sent": await send_email("a@b.io")}
+
+    return mailer
+
+
+def test_side_effecting_tool_is_blocked_in_a_live_run_without_a_mock():
+    from agenttrace_sdk import SideEffectBlocked
+
+    async def go(mocks=None):
+        async with trace_run("w", ListSink(), origin="live", mocks=mocks):
+            return await _email_node()({}, None, None)
+
+    with pytest.raises(SideEffectBlocked, match="send_email"):
+        run(go())
+
+    async def fake_send(to):
+        return f"mock-sent-to-{to}"
+
+    assert run(go({"send_email": fake_send})) == {"sent": "mock-sent-to-a@b.io"}
+
+
+def test_side_effecting_tool_still_runs_in_a_normal_recording():
+    async def go(sink):
+        async with trace_run("w", sink) as r:
+            await _email_node()({}, None, None)
+        return r
+
+    sink = ListSink()
+    (s,) = sink.steps_for(run(go(sink)).id)
+    assert s["tool_result"] == "sent" and s["side_effect"] is True

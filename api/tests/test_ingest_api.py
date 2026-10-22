@@ -13,61 +13,10 @@ RUN = "run0000000000001"
 PLANTED = "sk-ant-api03-PLANTEDsecret0123456789_abcDEF"
 
 
-class FakeDB:
-    def __init__(self):
-        self.keys = {hash_key(KEY_A): "ws-a", hash_key(KEY_B): "ws-b"}
-        self.runs: dict[str, dict] = {}
-        self.steps: dict[tuple[str, int], dict] = {}
-
-    async def workspace_for_key_hash(self, h):
-        return self.keys.get(h)
-
-    async def create_run(self, ws, run_id, workflow, started_at):
-        if run_id in self.runs:
-            if self.runs[run_id]["workspace"] != ws:
-                raise db.RunConflict(run_id)
-            return False
-        self.runs[run_id] = {"id": run_id, "workspace": ws, "workflow": workflow,
-                             "started_at": started_at, "status": "running"}
-        return True
-
-    async def run_exists(self, ws, run_id):
-        return self.runs.get(run_id, {}).get("workspace") == ws
-
-    async def add_steps(self, ws, run_id, steps):
-        added = 0
-        for s in steps:
-            if (run_id, s["idx"]) not in self.steps:
-                self.steps[(run_id, s["idx"])] = s
-                added += 1
-        return added
-
-    async def finish_run(self, ws, run_id, status, outcome, oracle_detail):
-        if not await self.run_exists(ws, run_id):
-            return False
-        self.runs[run_id].update(status=status, outcome=outcome, oracle_detail=oracle_detail)
-        return True
-
-    async def get_run_with_steps(self, ws, run_id):
-        if not await self.run_exists(ws, run_id):
-            return None
-        steps = sorted((s for (r, _), s in self.steps.items() if r == run_id), key=lambda s: s["idx"])
-        return {**self.runs[run_id], "steps": steps}
-
-    async def list_runs(self, ws, limit=50):
-        return sorted((r for r in self.runs.values() if r["workspace"] == ws),
-                      key=lambda r: r["started_at"], reverse=True)[:limit]
-
-
 @pytest.fixture
-def store(monkeypatch):
-    fake = FakeDB()
-    for name in ("workspace_for_key_hash", "create_run", "run_exists", "add_steps",
-                 "finish_run", "get_run_with_steps", "list_runs"):
-        monkeypatch.setattr(db, name, getattr(fake, name))
-    monkeypatch.setenv("ENV", "dev")
-    monkeypatch.setenv("DEV_WORKSPACE_ID", "ws-a")
-    return fake
+def store(store):
+    store.keys.update({hash_key(KEY_A): "ws-a", hash_key(KEY_B): "ws-b"})
+    return store
 
 
 @pytest.fixture

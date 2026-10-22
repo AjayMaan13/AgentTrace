@@ -9,6 +9,7 @@ execution of an agent). A node run is one execution of an agent and may hold sev
 a writer that runs twice in a writer/critic loop is node runs 3 and 5, not "the writer".
 """
 
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -46,7 +47,11 @@ class Step:
 
 
 class RunContext:
-    def __init__(self, run_id: str, workflow: str, origin: str, sink: Sink) -> None:
+    def __init__(
+        self, run_id: str, workflow: str, origin: str, sink: Sink, *,
+        start_idx: int = 0, start_node_run_idx: int = 0,
+        mocks: dict[str, Callable[..., Any]] | None = None,
+    ) -> None:
         self.id = run_id
         self.workflow = workflow
         self.origin = origin
@@ -54,8 +59,11 @@ class RunContext:
         # Set by the caller inside `trace_run` once the oracle has run; sent on finish.
         self.outcome: str | None = None
         self.oracle_detail: dict[str, Any] | None = None
-        self._idx = 0
-        self._node_runs = 0
+        # Side-effecting tools by name; a live run may only call those that have a mock here.
+        self.mocks = mocks or {}
+        # A fork continues numbering after the steps it copied.
+        self._idx = start_idx
+        self._node_runs = start_node_run_idx
 
     def next_idx(self) -> int:
         self._idx += 1

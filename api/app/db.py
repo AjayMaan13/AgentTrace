@@ -139,9 +139,11 @@ async def workspace_for_key_hash(sha256: str) -> str | None:
 
 # --- runs and steps --------------------------------------------------------------------------
 
-async def create_run(workspace: str, run_id: str, workflow: str, started_at: str) -> bool:
+async def create_run(
+    workspace: str, run_id: str, workflow: str, started_at: str, kind: str = "recorded"
+) -> bool:
     """True if created, False if it already existed in this workspace (retry-safe)."""
-    doc = {"workspace": workspace, "workflow": workflow, "kind": "recorded",
+    doc = {"workspace": workspace, "workflow": workflow, "kind": kind,
            "status": "running", "started_at": started_at}
     async with connect() as c:
         try:
