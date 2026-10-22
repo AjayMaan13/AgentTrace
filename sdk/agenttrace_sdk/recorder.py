@@ -134,7 +134,8 @@ async def trace_run(
 ) -> AsyncIterator[RunContext]:
     """Start a run, make it the current one, and close it (status 'ok' or 'error') on exit.
 
-    Yields the RunContext; `run.id` is the run id. `origin` is stamped on every step: the
+    Yields the RunContext; `run.id` is the run id. Set `run.outcome` ('pass' | 'fail') and
+    `run.oracle_detail` before the block ends to record the oracle's verdict. `origin` is stamped on every step: the
     recorder uses 'recorded', and Phase 5's live suffix will pass 'live'.
     """
     run = RunContext(uuid4().hex, workflow_name, origin, sink)
@@ -155,7 +156,8 @@ async def trace_run(
         raise
     finally:
         current_run.reset(token)
-        await sink.finish_run(run.id, status)
+        outcome = run.outcome or ("error" if status == "error" else None)
+        await sink.finish_run(run.id, status, outcome, run.oracle_detail)
 
 
 def node(

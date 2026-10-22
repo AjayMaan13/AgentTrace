@@ -268,3 +268,30 @@ def test_origin_is_stamped_on_every_step():
 
     sink = ListSink()
     assert {s["origin"] for s in sink.steps_for(run(go(sink)).id)} == {"live"}
+
+
+def test_outcome_and_oracle_detail_set_inside_the_block_reach_the_sink():
+    async def go(sink):
+        async with trace_run("w", sink) as r:
+            await planner({"request": "r"}, TracedLLM(FakeClient(["p"]), "planner"), None)
+            r.outcome, r.oracle_detail = "fail", {"why": "wrong count"}
+        return r
+
+    sink = ListSink()
+    rec = sink.runs[run(go(sink)).id]
+    assert (rec["outcome"], rec["oracle_detail"], rec["status"]) == ("fail", {"why": "wrong count"}, "ok")
+
+
+def test_a_crashed_run_gets_outcome_error():
+    @node("boom", reads=[], writes=["x"])
+    async def boom(state, llm, tools):
+        raise ValueError("x")
+
+    async def go(sink):
+        async with trace_run("w", sink):
+            await boom({}, None, None)
+
+    sink = ListSink()
+    with pytest.raises(ValueError):
+        run(go(sink))
+    assert next(iter(sink.runs.values()))["outcome"] == "error"

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import db
 from app.config import get_settings
+from app.routes import ingest, runs
 
 settings = get_settings()
 
@@ -15,6 +16,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+app.include_router(ingest.router)
+app.include_router(runs.router)
 
 
 @app.get("/health")

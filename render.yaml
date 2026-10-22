@@ -5,10 +5,10 @@ services:
   - type: web
     name: agenttrace-api
     runtime: python
-    rootDir: api
+    # No rootDir: the api imports the sibling sdk/ package, so build from the repo root.
     plan: free # Phase 10: switch to starter so it never sleeps mid-demo
-    buildCommand: pip install .
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install ./sdk ./api
+    startCommand: cd api && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION

@@ -25,3 +25,4 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["live: hits the real SurrealDB (set RUN_LIVE=1)"]

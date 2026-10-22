@@ -38,7 +38,8 @@ reports success rates (e.g. 0/5 -> 4/5). A root-cause (RCA) agent ranks suspect 
 - Source of truth for scope and phases: `readme.md` (project map) and `AgentTrace-Build-Guide.md`.
 - One `.env` at the repo root (gitignored). `.env.example` lists names only. api loads it with
   python-dotenv, web with `@next/env` (see `web/next.config.ts`). Real env vars win over the file.
-- api dev: `cd api && python3.11 -m venv .venv && .venv/bin/pip install -e '.[dev]' && .venv/bin/pytest`
+- api dev: `cd api && python3.11 -m venv .venv && .venv/bin/pip install -e ../sdk -e '.[dev]' && .venv/bin/pytest`
+  (live DB tests: `RUN_LIVE=1 .venv/bin/pytest tests/test_db_live.py`; schema: `api/schema.surql`)
 - sdk tests: `api/.venv/bin/pytest sdk/` (stdlib-only package, no install needed; `sdk/pyproject.toml` sets pythonpath)
 - web dev: `cd web && npm install && npm run dev`
 - web/AGENTS.md says this Next.js has breaking changes: read `web/node_modules/next/dist/docs/` before

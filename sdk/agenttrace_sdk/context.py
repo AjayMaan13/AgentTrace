@@ -51,6 +51,9 @@ class RunContext:
         self.workflow = workflow
         self.origin = origin
         self.sink = sink
+        # Set by the caller inside `trace_run` once the oracle has run; sent on finish.
+        self.outcome: str | None = None
+        self.oracle_detail: dict[str, Any] | None = None
         self._idx = 0
         self._node_runs = 0
 
