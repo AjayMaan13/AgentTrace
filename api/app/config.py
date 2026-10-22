@@ -17,7 +17,10 @@ DEMO_MODEL = "claude-haiku-5-5"
 # claude-haiku-5-5 rejects non-default temperature/top_p/top_k (400), and anthropic 2.x has no
 # `temperature` argument. Sampling stays at the API default; effort is the control we set.
 DEMO_EFFORT = "low"
-RCA_MODEL = "claude-sonnet-5-5"
+# The RCA agent also runs on Haiku (cheaper, fast). Unlike Sonnet 5.5, Haiku 5.5 accepts a forced
+# tool_choice (probed), so report_candidates can be forced.
+RCA_MODEL = "claude-haiku-5-5"
+RCA_EFFORT = "medium"
 
 DB_CONNECT_TIMEOUT_S = 5.0
 

@@ -13,7 +13,7 @@ from app.experiments import runner
 from app.experiments.stats import fisher_exact_two_sided
 from app.auth import get_principal
 from app.main import app
-from app.routes.experiments import get_runtime
+from app.runtime import get_runtime
 from app.workflows.renewal_brief.tools import FixtureTools
 from test_fork import FIXED_PLAN, WS, record
 from test_renewal_brief import APPROVE, BUGGY_PLAN, draft

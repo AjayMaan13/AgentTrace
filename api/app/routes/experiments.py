@@ -3,7 +3,6 @@
 from typing import Any
 
 from agenttrace_sdk import SideEffectBlocked
-from anthropic import AsyncAnthropic
 from fastapi import APIRouter, Depends, HTTPException
 
 from app import db
@@ -11,15 +10,9 @@ from app.auth import read_workspace
 from app.experiments.runner import create_experiment, view
 from app.models import ExperimentCreate
 from app.replay.fork import ModelPinError
-from app.workflows.renewal_brief.tools import make_tools
+from app.runtime import get_runtime
 
 router = APIRouter(prefix="/v1")
-
-
-def get_runtime() -> tuple[Any, Any]:
-    """(LLM client, tools) for live forks. A dependency so tests can substitute fakes.
-    The SDK retries 429s; a higher ceiling than its default of 2 rides out rate limits."""
-    return AsyncAnthropic(max_retries=5), make_tools()
 
 
 @router.post("/experiments", status_code=202)

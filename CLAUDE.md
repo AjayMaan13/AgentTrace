@@ -21,7 +21,8 @@ reports success rates (e.g. 0/5 -> 4/5). A root-cause (RCA) agent ranks suspect 
 ## Models
 - Demo agents: claude-haiku-5-5. It rejects non-default temperature, so sampling is the API default and
   `output_config.effort` (DEMO_EFFORT in config.py) is the control we set.
-- RCA agent: claude-sonnet-5-5, forced tool call `report_candidates`.
+- RCA agent: claude-haiku-5-5 (user's choice: smaller than sonnet-5-5), forced tool call
+  `report_candidates` (verified to work on haiku-5-5; sonnet-5-5 rejects forced tool_choice).
 - Model ids live in api/app/config.py only.
 
 ## Rules

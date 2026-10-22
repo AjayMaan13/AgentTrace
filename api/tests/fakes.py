@@ -13,6 +13,7 @@ class FakeDB:
         self.forks: list[dict[str, Any]] = []
         self.experiments: dict[str, dict[str, Any]] = {}
         self.tested: list[tuple[str, str]] = []
+        self.rca_reports: list[dict[str, Any]] = []
 
     async def workspace_for_key_hash(self, h):
         return self.keys.get(h)
@@ -85,8 +86,15 @@ class FakeDB:
                 "tokens_in": sum(s["tokens_in"] for s in steps),
                 "tokens_out": sum(s["tokens_out"] for s in steps)}
 
+    async def create_rca_report(self, ws, report_id, doc):
+        self.rca_reports.append({**doc, "id": report_id, "workspace": ws})
+
+    async def get_latest_rca_report(self, ws, run_id):
+        mine = [r for r in self.rca_reports if r["workspace"] == ws and r["run"] == run_id]
+        return max(mine, key=lambda r: r["created_at"]) if mine else None
+
 
 DB_FUNCTIONS = ("workspace_for_key_hash", "create_run", "run_exists", "add_steps", "finish_run",
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
                 "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
-                "get_run_summary")
+                "get_run_summary", "create_rca_report", "get_latest_rca_report")

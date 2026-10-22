@@ -312,6 +312,25 @@ async def get_run_summary(workspace: str, run_id: str) -> dict[str, Any] | None:
     return _plain(rows[0]) if rows else None
 
 
+# --- RCA reports -----------------------------------------------------------------------------
+
+async def create_rca_report(workspace: str, report_id: str, doc: dict[str, Any]) -> None:
+    async with connect() as c:
+        await c.query(
+            "CREATE type::record('rca_report', $id) CONTENT $d",
+            {"id": report_id, "d": {**doc, "workspace": workspace}},
+        )
+
+
+async def get_latest_rca_report(workspace: str, run_id: str) -> dict[str, Any] | None:
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM rca_report WHERE workspace = $ws AND run = $r ORDER BY created_at DESC LIMIT 1",
+            {"ws": workspace, "r": run_id},
+        )
+    return _row(rows[0]) if rows else None
+
+
 # --- test / smoke cleanup --------------------------------------------------------------------
 
 async def purge_workspace(workspace: str) -> None:
@@ -330,5 +349,6 @@ async def purge_workspace(workspace: str) -> None:
             await c.query("DELETE $rid", {"rid": run_rid})
         await c.query("DELETE tested WHERE in.workspace = $ws", {"ws": workspace})
         await c.query("DELETE experiment WHERE workspace = $ws", {"ws": workspace})
+        await c.query("DELETE rca_report WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE api_key WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE type::record('workspace', $ws)", {"ws": workspace})

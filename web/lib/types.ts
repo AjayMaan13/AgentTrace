@@ -79,3 +79,24 @@ export type Experiment = {
   token_ceiling: number;
   error: string | null;
 };
+
+export type Candidate = {
+  node_run_idx: number;
+  step_idx: number;
+  confidence: number; // 0..1
+  hypothesis: string;
+  evidence_quotes: string[]; // checked verbatim against the trace by the API
+  proposed_edit: { mode: "output"; patch: State } | null;
+};
+
+export type RcaReport = {
+  id: string;
+  run: string;
+  model: string;
+  created_at: string;
+  lineage: number[]; // node runs on the data path to the failing output
+  dropped_quotes: number;
+  tokens_in: number;
+  tokens_out: number;
+  candidates: Candidate[]; // ranked, most likely first
+};

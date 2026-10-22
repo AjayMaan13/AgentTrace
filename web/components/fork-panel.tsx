@@ -4,20 +4,27 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ApiError, useApi } from "@/lib/api";
 import { changedKeys, forkPrefill, nodeRuns, parseEdit } from "@/lib/runs";
-import type { Run } from "@/lib/types";
+import type { Run, State } from "@/lib/types";
 
 const N_CHOICES = [3, 5, 8];
 
 /** Edit what one node run wrote, then run the same fork twice, N times each: control keeps
  * the recorded output, treatment applies the edit. */
-export function ForkPanel({ run }: { run: Run }) {
+export function ForkPanel({
+  run, request,
+}: { run: Run; request?: { nodeRunIdx: number; patch: State } | null }) {
   const router = useRouter();
   const api = useApi();
   const forkable = useMemo(() => nodeRuns(run.steps).filter((r) => r.stateAfter && r.writes.length > 0), [run.steps]);
-  const [idx, setIdx] = useState(forkable[0]?.idx ?? 1);
+  // A request (from "Test this" in the root-cause panel) opens the panel at that node run with
+  // the proposed patch applied on top of the recorded output.
+  const startRun = forkable.find((r) => r.idx === request?.nodeRunIdx) ?? forkable[0];
+  const [idx, setIdx] = useState(startRun?.idx ?? 1);
   const selected = forkable.find((r) => r.idx === idx) ?? forkable[0];
   const prefill = useMemo(() => (selected ? forkPrefill(selected) : {}), [selected]);
-  const [text, setText] = useState(() => JSON.stringify(prefill, null, 2));
+  const [text, setText] = useState(() =>
+    JSON.stringify({ ...(startRun ? forkPrefill(startRun) : {}), ...(request?.patch ?? {}) }, null, 2),
+  );
   const [n, setN] = useState(5);
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -62,7 +69,7 @@ export function ForkPanel({ run }: { run: Run }) {
 
   const error = problem ?? apiError;
   return (
-    <section aria-label="Fork this run" className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
+    <section id="fork-panel" tabIndex={-1} aria-label="Fork this run" className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
       <h2 className="text-lg font-semibold">Fork this run</h2>
       <p className="text-sm text-zinc-700 dark:text-zinc-300">
         Edit what a node run wrote. AgentTrace runs the same fork twice, {n} times each: <b>control</b> keeps

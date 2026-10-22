@@ -50,3 +50,10 @@ test("the editor text must be a JSON object", () => {
   assert.deepEqual(parseEdit('{"a": 1}'), { ok: true, value: { a: 1 } });
   for (const bad of ["[1]", "3", "null", "{oops", ""]) assert.equal(parseEdit(bad).ok, false);
 });
+
+test("an RCA patch pre-fills the editor so that exactly the patch is what gets sent", () => {
+  const prefill = forkPrefill(nodeRuns(steps)[0]);
+  const patch = { plan: { f: ["new", "open"] } };
+  assert.deepEqual(changedKeys(prefill, { ...prefill, ...patch }), patch);
+  assert.deepEqual(changedKeys(prefill, { ...prefill, ...{ plan: prefill.plan } }), {}); // a no-op patch sends nothing
+});

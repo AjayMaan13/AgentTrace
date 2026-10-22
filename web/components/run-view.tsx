@@ -4,13 +4,26 @@ import { useState } from "react";
 import { ForkPanel } from "@/components/fork-panel";
 import { Inspector } from "@/components/inspector";
 import { Lanes } from "@/components/lanes";
+import { RcaPanel } from "@/components/rca-panel";
 import { OutcomeBadge } from "@/components/badges";
 import { formatTime, formatTokens, shortId } from "@/lib/format";
-import type { OracleDetail, Run } from "@/lib/types";
+import type { Candidate, OracleDetail, Run, State } from "@/lib/types";
 
 export function RunView({ run }: { run: Run }) {
   const [selected, setSelected] = useState<number | null>(run.steps.length ? Math.min(...run.steps.map((s) => s.idx)) : null);
   const step = run.steps.find((s) => s.idx === selected) ?? null;
+  const [forkRequest, setForkRequest] = useState<{ nodeRunIdx: number; patch: State; nonce: number } | null>(null);
+
+  function testCandidate(c: Candidate) {
+    if (!c.proposed_edit) return;
+    setForkRequest((prev) => ({ nodeRunIdx: c.node_run_idx, patch: c.proposed_edit!.patch, nonce: (prev?.nonce ?? 0) + 1 }));
+    // Bring the pre-filled fork panel into view once it has re-rendered.
+    setTimeout(() => {
+      const panel = document.getElementById("fork-panel");
+      panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      panel?.focus({ preventScroll: true });
+    }, 50);
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -39,8 +52,10 @@ export function RunView({ run }: { run: Run }) {
         <div className="min-w-0 lg:col-span-3">
           <Inspector step={step} steps={run.steps} />
         </div>
-        <div className="min-w-0 lg:col-span-2">
-          <ForkPanel key={run.id} run={run} />
+        <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
+          <RcaPanel run={run} onTest={testCandidate} />
+          {/* Remounted on each "Test this" so it starts from the proposed edit. */}
+          <ForkPanel key={`${run.id}-${forkRequest?.nonce ?? 0}`} run={run} request={forkRequest} />
         </div>
       </div>
     </div>

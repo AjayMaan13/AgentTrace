@@ -19,6 +19,8 @@ class Workflow:
     next_node: Callable[[dict[str, Any]], str]
     ground_truth: Callable[[dict[str, Any], Any], Awaitable[dict[str, Any]]]
     check: Callable[[dict[str, Any], dict[str, Any]], tuple[bool, dict[str, Any]]]
+    # State keys the oracle reads its answer from: where the root-cause walk starts.
+    oracle_keys: tuple[str, ...] = ()
 
 
 async def _renewal_truth(state: dict[str, Any], tools: Any) -> dict[str, Any]:
@@ -37,5 +39,6 @@ REGISTRY: dict[str, Workflow] = {
         next_node=next_node,
         ground_truth=_renewal_truth,
         check=check,
+        oracle_keys=("draft",),  # the writer's brief and its JSON footer
     )
 }
