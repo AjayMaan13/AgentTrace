@@ -11,6 +11,8 @@ class FakeDB:
         self.runs: dict[str, dict[str, Any]] = {}
         self.steps: dict[tuple[str, int], dict[str, Any]] = {}
         self.forks: list[dict[str, Any]] = []
+        self.experiments: dict[str, dict[str, Any]] = {}
+        self.tested: list[tuple[str, str]] = []
 
     async def workspace_for_key_hash(self, h):
         return self.keys.get(h)
@@ -60,6 +62,31 @@ class FakeDB:
     async def list_forks(self, ws, parent_run_id):
         return [f for f in self.forks if f["parent"] == parent_run_id]
 
+    async def create_experiment(self, ws, experiment_id, doc):
+        self.experiments[experiment_id] = {**doc, "id": experiment_id, "workspace": ws}
+
+    async def update_experiment(self, ws, experiment_id, merge):
+        if self.experiments.get(experiment_id, {}).get("workspace") == ws:
+            self.experiments[experiment_id].update(merge)
+
+    async def get_experiment(self, ws, experiment_id):
+        e = self.experiments.get(experiment_id)
+        return {**e} if e and e["workspace"] == ws else None
+
+    async def create_tested_edge(self, experiment_id, run_id):
+        self.tested.append((experiment_id, run_id))
+
+    async def get_run_summary(self, ws, run_id):
+        r = self.runs.get(run_id)
+        if not r or r["workspace"] != ws:
+            return None
+        steps = [s for (rid, _), s in self.steps.items() if rid == run_id]
+        return {"status": r.get("status"), "outcome": r.get("outcome"),
+                "tokens_in": sum(s["tokens_in"] for s in steps),
+                "tokens_out": sum(s["tokens_out"] for s in steps)}
+
 
 DB_FUNCTIONS = ("workspace_for_key_hash", "create_run", "run_exists", "add_steps", "finish_run",
-                "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks")
+                "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
+                "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
+                "get_run_summary")

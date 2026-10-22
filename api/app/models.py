@@ -51,3 +51,12 @@ class RunFinish(BaseModel):
     status: Literal["ok", "error"]
     outcome: Literal["pass", "fail", "error"] | None = None
     oracle_detail: dict[str, Any] | None = None
+
+
+class ExperimentCreate(BaseModel):
+    run_id: str
+    fork_node_run_idx: int = Field(ge=1)
+    # Treatment edit: top-level state keys to overwrite at the fork point. The control arm
+    # forks at the same point with no edit, so an experiment needs one.
+    edit: dict[str, Any] = Field(min_length=1)
+    n: int = Field(ge=1, le=100)  # the real ceiling is MAX_N, enforced with a clear message

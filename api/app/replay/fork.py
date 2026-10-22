@@ -18,6 +18,7 @@ treatment differ in exactly one thing.
 
 import inspect
 import logging
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from agenttrace_sdk import SideEffectBlocked, redact, trace_run
@@ -26,7 +27,7 @@ from app import db
 from app.config import DEMO_EFFORT, DEMO_MODEL
 from app.runner.run import run_to_end
 from app.runner.sink import DbSink
-from app.workflows.registry import REGISTRY
+from app.workflows.registry import REGISTRY, Workflow
 
 log = logging.getLogger(__name__)
 
@@ -81,25 +82,29 @@ def _edited_step(
     return clean
 
 
-async def run_fork(
+@dataclass(frozen=True)
+class ForkPlan:
+    workflow: Workflow
+    k: int
+    state: dict[str, Any]  # what the live suffix starts from
+    prefix: list[dict[str, Any]]  # recorded steps of node runs before k
+    node_k: list[dict[str, Any]]  # recorded steps of node run k
+    start_idx: int  # numbering the live steps continue from
+
+
+async def prepare_fork(
     workspace: str,
     parent_run_id: str,
     fork_node_run_idx: int,
     edit: dict[str, Any] | None,
-    arm: Arm,
-    *,
-    client: Any,
     tools: Any,
     mocks: dict[str, Any] | None = None,
-    experiment_id: str | None = None,
-) -> str:
-    """Create a fork run and return its id. The run's outcome ('pass' | 'fail' | 'error') is
-    stored on the run; a failure after the run exists is recorded, not raised.
+) -> ForkPlan:
+    """Validate a fork and work out what it will copy and restore. Creates nothing.
 
-    Raises (before any run is created): LookupError (parent not in workspace, or unregistered
-    workflow), ValueError (bad fork point or edit), ModelPinError, SideEffectBlocked.
+    Raises LookupError (parent not in workspace, or unregistered workflow), ValueError (bad
+    fork point or edit), ModelPinError, SideEffectBlocked.
     """
-    mocks = mocks or {}
     parent = await db.get_run_with_steps(workspace, parent_run_id)
     if parent is None:
         raise LookupError("parent run not found")
@@ -121,33 +126,53 @@ async def run_fork(
             raise ValueError(f"edit keys {undeclared} are not writes of node run {k}")
 
     _check_model_pinned(steps)
-    blocked = _side_effecting_tools(tools, mocks)
+    blocked = _side_effecting_tools(tools, mocks or {})
     if blocked:
         raise SideEffectBlocked(f"side-effecting tools without a mock: {blocked}")
 
-    state = {**recorded_state, **(edit or {})}
     prefix = [s for s in steps if s["node_run_idx"] < k]
     prefix_last_idx = max((s["idx"] for s in prefix), default=0)
     # Live steps continue numbering after what was copied: node run k is either kept as-is
     # (its steps keep their idx) or collapsed into one edited step right after the prefix.
     start_idx = prefix_last_idx + 1 if edit is not None else max(s["idx"] for s in prefix + node_k)
+    return ForkPlan(workflow, k, {**recorded_state, **(edit or {})}, prefix, node_k, start_idx)
+
+
+async def run_fork(
+    workspace: str,
+    parent_run_id: str,
+    fork_node_run_idx: int,
+    edit: dict[str, Any] | None,
+    arm: Arm,
+    *,
+    client: Any,
+    tools: Any,
+    mocks: dict[str, Any] | None = None,
+    experiment_id: str | None = None,
+) -> str:
+    """Create a fork run and return its id. The run's outcome ('pass' | 'fail' | 'error') is
+    stored on the run; a failure after the run exists is recorded, not raised. Validation
+    errors (see prepare_fork) are raised before any run is created."""
+    mocks = mocks or {}
+    plan = await prepare_fork(workspace, parent_run_id, fork_node_run_idx, edit, tools, mocks)
+    workflow, k = plan.workflow, plan.k
 
     run_id: str | None = None
     try:
         async with trace_run(
             workflow.name, DbSink(workspace), origin="live", mocks=mocks,
-            start_idx=start_idx, start_node_run_idx=k,
+            start_idx=plan.start_idx, start_node_run_idx=k,
         ) as run:
             run_id = run.id
-            copied = [_copy(s, run.id, "replayed") for s in prefix]
+            copied = [_copy(s, run.id, "replayed") for s in plan.prefix]
             if edit is None:
-                copied += [_copy(s, run.id, "replayed") for s in node_k]
+                copied += [_copy(s, run.id, "replayed") for s in plan.node_k]
             else:
-                copied.append(_edited_step(run.id, prefix_last_idx + 1, k, node_k[-1], edit, state))
+                copied.append(_edited_step(run.id, plan.start_idx, k, plan.node_k[-1], edit, plan.state))
             await db.add_steps(workspace, run.id, copied)
             await db.create_fork_edge(workspace, run.id, parent_run_id, k, arm, experiment_id)
 
-            final = await run_to_end(workflow.build_nodes(), workflow.next_node, state, client, tools)
+            final = await run_to_end(workflow.build_nodes(), workflow.next_node, plan.state, client, tools)
             passed, detail = workflow.check(final, await workflow.ground_truth(final, tools))
             run.outcome, run.oracle_detail = ("pass" if passed else "fail"), detail
     except Exception as exc:

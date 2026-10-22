@@ -267,6 +267,51 @@ async def list_forks(workspace: str, parent_run_id: str) -> list[dict[str, Any]]
     return [{**_plain(r), "fork_run": r["fork_run"].id} for r in rows]
 
 
+# --- experiments -----------------------------------------------------------------------------
+
+async def create_experiment(workspace: str, experiment_id: str, doc: dict[str, Any]) -> None:
+    async with connect() as c:
+        await c.query(
+            "CREATE type::record('experiment', $id) CONTENT $d",
+            {"id": experiment_id, "d": {**doc, "workspace": workspace}},
+        )
+
+
+async def update_experiment(workspace: str, experiment_id: str, merge: dict[str, Any]) -> None:
+    async with connect() as c:
+        await c.query(
+            "UPDATE type::record('experiment', $id) MERGE $m WHERE workspace = $ws",
+            {"id": experiment_id, "m": merge, "ws": workspace},
+        )
+
+
+async def get_experiment(workspace: str, experiment_id: str) -> dict[str, Any] | None:
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM type::record('experiment', $id) WHERE workspace = $ws",
+            {"id": experiment_id, "ws": workspace},
+        )
+    return _row(rows[0]) if rows else None
+
+
+async def create_tested_edge(experiment_id: str, run_id: str) -> None:
+    async with connect() as c:
+        await c.query(
+            "RELATE (type::record('experiment', $e))->tested->(type::record('run', $r))",
+            {"e": experiment_id, "r": run_id},
+        )
+
+
+async def get_run_summary(workspace: str, run_id: str) -> dict[str, Any] | None:
+    """Just the outcome and token totals of a run (no steps)."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT status, outcome, tokens_in, tokens_out FROM type::record('run', $id) WHERE workspace = $ws",
+            {"id": run_id, "ws": workspace},
+        )
+    return _plain(rows[0]) if rows else None
+
+
 # --- test / smoke cleanup --------------------------------------------------------------------
 
 async def purge_workspace(workspace: str) -> None:
@@ -283,5 +328,7 @@ async def purge_workspace(workspace: str) -> None:
             await c.query("DELETE forked_from WHERE in = $rid OR out = $rid", {"rid": run_rid})
             await c.query("DELETE step WHERE run = $r", {"r": r})
             await c.query("DELETE $rid", {"rid": run_rid})
+        await c.query("DELETE tested WHERE in.workspace = $ws", {"ws": workspace})
+        await c.query("DELETE experiment WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE api_key WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE type::record('workspace', $ws)", {"ws": workspace})
