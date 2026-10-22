@@ -28,11 +28,11 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def record(plan, *replies) -> str:
+def record(plan, *replies, ws: str = WS) -> str:
     """Record a parent run (origin 'recorded') through DbSink into the fake store."""
     async def go():
         client = ScriptedClient(json.dumps(plan), *replies)
-        async with trace_run("renewal_brief", DbSink(WS)) as r:
+        async with trace_run("renewal_brief", DbSink(ws)) as r:
             await run_to_end(
                 build_nodes(PLANNER_SYSTEM_GOOD), next_node, {"request": REQUEST}, client, FixtureTools()
             )

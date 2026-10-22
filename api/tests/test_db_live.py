@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.auth import KEY_PREFIX, hash_key
+from app.auth import KEY_PREFIX, Principal, get_principal, hash_key
 from app.main import app
 
 pytestmark = pytest.mark.skipif(not os.environ.get("RUN_LIVE"), reason="set RUN_LIVE=1 to hit SurrealDB")
@@ -110,13 +110,13 @@ def test_list_forks_is_empty_for_a_fresh_run_then_shows_the_fork(ws):
     assert run(db.list_forks("test-other", parent)) == []
 
 
-def test_end_to_end_ingest_over_http_with_a_real_key(ws, monkeypatch):
+def test_end_to_end_ingest_over_http_with_a_real_key(ws, request):
     """SDK-shaped requests -> routes -> SurrealDB -> GET, including a wrong key and a re-post."""
     key = KEY_PREFIX + uuid.uuid4().hex
     run(db.upsert_workspace(ws, "live test"))
     run(db.create_api_key(ws, key[:12], hash_key(key), "test"))
-    monkeypatch.setenv("ENV", "dev")
-    monkeypatch.setenv("DEV_WORKSPACE_ID", ws)
+    app.dependency_overrides[get_principal] = lambda: Principal("user_1", ws, "member")
+    request.addfinalizer(lambda: app.dependency_overrides.pop(get_principal, None))
     client, auth, rid = TestClient(app), {"Authorization": f"Bearer {key}"}, new_id()
 
     assert client.post("/v1/runs", headers={"Authorization": "Bearer at_live_wrong"},

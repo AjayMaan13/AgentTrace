@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.experiments import runner
 from app.experiments.stats import fisher_exact_two_sided
+from app.auth import get_principal
 from app.main import app
 from app.routes.experiments import get_runtime
 from app.workflows.renewal_brief.tools import FixtureTools
@@ -132,11 +133,12 @@ def test_runs_that_error_count_as_failures_and_do_not_stop_the_experiment(store,
 # --- the routes ------------------------------------------------------------------------------
 
 @pytest.fixture
-def api(store):
+def api(store, login):
+    login("ws-a")
     app.dependency_overrides[get_runtime] = lambda: (FakeLLM(), FixtureTools())
     with TestClient(app) as client:  # one event loop for the whole test, so background tasks live
         yield client
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_runtime, None)
 
 
 def wait_done(api, exp_id, timeout=5.0):
@@ -175,15 +177,15 @@ def test_a_bad_request_is_refused_with_a_clear_status(api, store, parent):
     assert store.experiments == {}
 
 
-def test_experiments_are_scoped_to_the_callers_workspace(api, parent, monkeypatch):
+def test_experiments_are_scoped_to_the_callers_workspace(api, parent, login):
     exp_id = post(api, parent).json()["id"]
     wait_done(api, exp_id)
-    monkeypatch.setenv("DEV_WORKSPACE_ID", "ws-b")
+    login("ws-b")
     assert api.get(f"/v1/experiments/{exp_id}").status_code == 404
     assert post(api, parent).status_code == 404  # ws-b cannot fork ws-a's run
 
 
-def test_experiment_routes_require_sign_in_outside_dev(api, parent, monkeypatch):
-    monkeypatch.setenv("ENV", "prod")
+def test_experiment_routes_require_sign_in(api, parent):
+    app.dependency_overrides.pop(get_principal)  # log out
     assert post(api, parent).status_code == 401
     assert api.get("/v1/experiments/abc").status_code == 401

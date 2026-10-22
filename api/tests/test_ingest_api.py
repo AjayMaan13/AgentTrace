@@ -121,22 +121,19 @@ def test_finish_records_outcome_and_detail_and_404s_for_foreign_runs(client, sto
 
 # --- reads -----------------------------------------------------------------------------------
 
-def test_get_run_returns_steps_in_order_and_other_workspaces_get_404(client, store, monkeypatch):
+def test_get_run_returns_steps_in_order_and_other_workspaces_get_404(client, store, login):
     make_run(client)
     client.post(f"/v1/runs/{RUN}/steps", json={"steps": [step(2), step(1)]}, headers=auth())
+    login("ws-a")
     run = client.get(f"/v1/runs/{RUN}").json()
     assert [s["idx"] for s in run["steps"]] == [1, 2]
     assert [r["id"] for r in client.get("/v1/runs").json()] == [RUN]
 
-    monkeypatch.setenv("DEV_WORKSPACE_ID", "ws-b")
+    login("ws-b")
     assert client.get(f"/v1/runs/{RUN}").status_code == 404
     assert client.get("/v1/runs").json() == []
 
 
-def test_reads_are_401_outside_dev_until_clerk_lands(client, monkeypatch):
-    monkeypatch.setenv("ENV", "prod")
+def test_reads_require_sign_in(client):
     assert client.get("/v1/runs").status_code == 401
     assert client.get(f"/v1/runs/{RUN}").status_code == 401
-    monkeypatch.setenv("ENV", "dev")
-    monkeypatch.setenv("DEV_WORKSPACE_ID", "")
-    assert client.get("/v1/runs").status_code == 401

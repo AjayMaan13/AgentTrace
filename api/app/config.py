@@ -44,7 +44,9 @@ class Settings:
     surreal_token: str
     surreal_auth_level: str
 
-    dev_workspace_id: str
+    dev_workspace_id: str  # local scripts only; the API itself never uses it
+    clerk_issuer: str
+    clerk_jwks_url: str
 
     tools_backend: str
     demo_account_id: str
@@ -73,6 +75,8 @@ def get_settings() -> Settings:
         surreal_token=_env("SURREAL_TOKEN"),
         surreal_auth_level=_env("SURREAL_AUTH_LEVEL", "root").lower(),
         dev_workspace_id=_env("DEV_WORKSPACE_ID"),
+        clerk_issuer=_env("CLERK_ISSUER").rstrip("/"),
+        clerk_jwks_url=_env("CLERK_JWKS_URL"),
         tools_backend=_env("TOOLS_BACKEND", "fixtures").lower(),
         demo_account_id=_env("DEMO_ACCOUNT_ID", "acct-1"),
         max_n=_env_int("MAX_N", 8),
