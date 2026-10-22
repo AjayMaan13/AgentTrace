@@ -1,71 +1,53 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useEffect, useState } from "react";
-import { ApiError, useApi } from "@/lib/api";
+import Link from "next/link";
+import { LoadState } from "@/components/load-state";
+import { OutcomeBadge } from "@/components/badges";
+import { formatTime, formatTokens, shortId } from "@/lib/format";
+import type { RunSummary } from "@/lib/types";
+import { useApiData } from "@/lib/use-api-data";
 
-type Run = { id: string; workflow: string; status: string; outcome?: string; started_at: string };
-type State =
-  | { status: "loading" }
-  | { status: "ok"; runs: Run[] }
-  | { status: "error"; code: number; message: string };
-
-// Phase 7 proof page: the list comes from the API, scoped to the active organization.
-// Phase 8 replaces it with the real run view.
 export function RunsList() {
-  const { orgId, isLoaded } = useAuth();
-  const api = useApi();
-  const [state, setState] = useState<State>({ status: "loading" });
+  const { orgId } = useAuth();
+  const state = useApiData<RunSummary[]>("/v1/runs");
 
-  useEffect(() => {
-    if (!isLoaded) return;
-    let cancelled = false;
-    api<Run[]>("/v1/runs")
-      .then((runs) => !cancelled && setState({ status: "ok", runs }))
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const code = err instanceof ApiError ? err.status : 0;
-        setState({ status: "error", code, message: err instanceof Error ? err.message : "Request failed" });
-      });
-    return () => {
-      cancelled = true;
-    };
-    // Refetch when the organization changes: a different org is a different workspace.
-  }, [api, isLoaded, orgId]);
-
-  if (state.status === "loading") return <p className="font-mono text-sm">Loading…</p>;
-  if (state.status === "error") {
-    return (
-      <p role="alert" className="rounded-lg border border-red-300 p-4 text-sm text-red-700 dark:text-red-400">
-        {state.code === 403
-          ? "Pick or create an organization with the switcher above: each organization is a workspace."
-          : `Could not load runs (${state.code || "network"}): ${state.message}`}
-      </p>
-    );
-  }
   return (
-    <>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Workspace <code className="font-mono">{orgId}</code>: {state.runs.length} run
-        {state.runs.length === 1 ? "" : "s"}
-      </p>
-      {state.runs.length === 0 ? (
-        <p className="rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700">
-          No runs in this workspace yet. Mint an ingest key for it with{" "}
-          <code className="font-mono">scripts/create_workspace_key.py --workspace {orgId}</code>, then
-          record a run.
-        </p>
-      ) : (
-        <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-300 dark:divide-zinc-800 dark:border-zinc-700">
-          {state.runs.map((run) => (
-            <li key={run.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-              <span className="font-mono text-sm">{run.id.slice(0, 8)}</span>
-              <span className="text-sm">{run.workflow}</span>
-              <span className="text-sm">{run.outcome ?? run.status}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
+    <LoadState state={state}>
+      {(runs) =>
+        runs.length === 0 ? (
+          <p className="rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700">
+            No runs in this workspace (<code className="font-mono">{orgId}</code>) yet. Mint an ingest key
+            for it with{" "}
+            <code className="font-mono">scripts/create_workspace_key.py --workspace {orgId} --force</code>,
+            then record a run.
+          </p>
+        ) : (
+          <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-300 dark:divide-zinc-800 dark:border-zinc-700">
+            {runs.map((run) => (
+              <li key={run.id}>
+                <Link
+                  href={`/runs/${run.id}`}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-zinc-100 focus-visible:bg-zinc-100 dark:hover:bg-zinc-900 dark:focus-visible:bg-zinc-900"
+                >
+                  <span className="font-mono text-sm font-medium">{shortId(run.id)}</span>
+                  <OutcomeBadge outcome={run.outcome} status={run.status} />
+                  <span className="text-sm">{run.workflow}</span>
+                  {run.kind === "fork" && (
+                    <span className="rounded border border-violet-600 px-1.5 text-xs text-violet-800 dark:border-violet-400 dark:text-violet-200">
+                      fork
+                    </span>
+                  )}
+                  <span className="ml-auto text-xs text-zinc-600 dark:text-zinc-400">
+                    {formatTime(run.started_at)}
+                    {run.tokens_in !== undefined && ` · ${formatTokens((run.tokens_in ?? 0) + (run.tokens_out ?? 0))} tokens`}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </LoadState>
   );
 }
