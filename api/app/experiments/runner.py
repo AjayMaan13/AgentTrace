@@ -162,7 +162,8 @@ async def _remember(workspace: str, experiment_id: str, doc: dict[str, Any]) -> 
         run = await db.get_run_with_steps(workspace, doc["parent_run"])
         stored_report = await db.get_latest_rca_report(workspace, doc["parent_run"])
         report = report_view(stored_report) if stored_report else None
-        if run is not None and await remember_experiment(workspace, shown, run, report):
-            await db.update_experiment(workspace, experiment_id, {"remembered": True})
+        scope = await remember_experiment(workspace, shown, run, report) if run is not None else None
+        if scope:
+            await db.update_experiment(workspace, experiment_id, {"remembered": True, "memory_scope": scope})
     except Exception as exc:
         log.warning("experiment %s: could not remember pattern: %s", experiment_id, type(exc).__name__)

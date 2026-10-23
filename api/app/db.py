@@ -312,6 +312,18 @@ async def get_run_summary(workspace: str, run_id: str) -> dict[str, Any] | None:
     return _plain(rows[0]) if rows else None
 
 
+async def list_memory_scopes(workspace: str, limit: int = 50) -> list[str]:
+    """Agent Memory scopes (one per source run) that hold this workspace's remembered patterns,
+    newest first. Recall needs the exact list: a parent scope does not include its children."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT memory_scope, finished_at FROM experiment "
+            "WHERE workspace = $ws AND remembered = true ORDER BY finished_at DESC LIMIT $n",
+            {"ws": workspace, "n": limit},
+        )
+    return list(dict.fromkeys(r["memory_scope"] for r in rows if r.get("memory_scope")))
+
+
 # --- RCA reports -----------------------------------------------------------------------------
 
 async def create_rca_report(workspace: str, report_id: str, doc: dict[str, Any]) -> None:

@@ -8,8 +8,10 @@ Rules:
 - Only verified patterns are stored (treatment beats control and passes at least 3 runs). An
   unverified hypothesis would poison later analyses.
 - Never raw prompts or payloads: a redacted paragraph built from the hypothesis and the numbers.
-- One scope per workspace and workflow (ws/<workspace>/workflow/<name>), so memory never
-  crosses organizations.
+- One scope per SOURCE RUN, under the workspace and workflow:
+  ws/<workspace>/workflow/<name>/run/<run id>. Never crossing organizations is then a matter of
+  the prefix, and forgetting a run is exact (scopes.forget). A parent scope does not include its
+  children, so recall passes the explicit list of scopes, which we keep on the experiments.
 - Everything here is best effort. If memory is not configured or is down, remember and forget
   return False/0 and recall returns []. An experiment or analysis never fails because of it.
 - The text carries its own provenance ("experiment <id>, run <id>") because a recall hit holds
@@ -23,6 +25,7 @@ from typing import Any
 from agenttrace_sdk import redact
 from surrealdb_memory import AsyncMemory
 
+from app import db
 from app.config import get_settings
 
 log = logging.getLogger(__name__)
@@ -38,6 +41,10 @@ _AGENT = re.compile(r"traced to the (\S+) step")
 
 def scope_for(workspace: str, workflow: str) -> str:
     return f"ws/{_SCOPE_UNSAFE.sub('_', workspace)}/workflow/{_SCOPE_UNSAFE.sub('_', workflow)}"
+
+
+def run_scope(workspace: str, workflow: str, run_id: str) -> str:
+    return f"{scope_for(workspace, workflow)}/run/{_SCOPE_UNSAFE.sub('_', run_id)}"
 
 
 def _open() -> AsyncMemory | None:
@@ -86,13 +93,14 @@ async def _ensure_scope(mem: AsyncMemory, scope: str) -> None:
 
 async def remember_experiment(
     workspace: str, experiment: dict[str, Any], run: dict[str, Any], report: dict[str, Any] | None
-) -> bool:
-    """Store the pattern behind a verified experiment. Returns True if it was stored."""
+) -> str | None:
+    """Store the pattern behind a verified experiment. Returns the scope it went into (the caller
+    keeps it on the experiment so recall can find it), or None if nothing was stored."""
     if not is_verified(experiment["control"], experiment["treatment"]):
-        return False
+        return None
     mem = _open()
     if mem is None:
-        return False
+        return None
     k = experiment["fork_node_run_idx"]
     agent = next((s["agent"] for s in run["steps"] if s["node_run_idx"] == k), "unknown")
     hypothesis = next(
@@ -106,14 +114,14 @@ async def remember_experiment(
     )
     labels = [f"workflow={run['workflow']}", f"agent_role={agent}", f"experiment={experiment['id']}",
               f"run={run['id']}", *[f"failure_class={f}" for f in failing_fields(run)]]
-    scope = scope_for(workspace, run["workflow"])
+    scope = run_scope(workspace, run["workflow"], run["id"])
     try:
         await _ensure_scope(mem, scope)
         await mem.remember(text, infer=INFER, scopes=[scope], labels=labels)
-        return True
+        return scope
     except Exception as exc:
         log.warning("agent memory remember failed: %s", type(exc).__name__)
-        return False
+        return None
     finally:
         await mem.close()
 
@@ -124,10 +132,16 @@ async def recall_patterns(workspace: str, workflow: str, fields: list[str], k: i
     mem = _open()
     if mem is None:
         return []
-    query = f"{workflow} root cause of failure on {' '.join(fields) or 'the oracle check'}"
     try:
-        # Ask for more than we keep: hits with no provenance and repeats are dropped below.
-        response = await mem.recall(query, k=k * 3, mode="hybrid", lens=[scope_for(workspace, workflow)])
+        # The prefix is what keeps this workspace's memory its own: only scopes under it are read.
+        prefix = scope_for(workspace, workflow) + "/run/"
+        scopes = [s for s in await db.list_memory_scopes(workspace) if s.startswith(prefix)]
+        if not scopes:
+            return []
+        query = f"{workflow} root cause of failure on {' '.join(fields) or 'the oracle check'}"
+        # Ask for more than we keep: hits with no provenance (extracted entities) and repeats are
+        # dropped below.
+        response = await mem.recall(query, k=k * 3, mode="hybrid", lens=scopes)
         found: dict[str, dict[str, Any]] = {}
         for hit in response.hits:
             experiment = _EXPERIMENT.search(hit.text)
@@ -147,14 +161,14 @@ async def recall_patterns(workspace: str, workflow: str, fields: list[str], k: i
         await mem.close()
 
 
-async def forget_run(run_id: str) -> int:
-    """Forget the patterns derived from a run (used when a run is deleted). Returns how many
-    items were removed. Agent Memory forgets by query, so the run id in the text is the handle."""
+async def forget_run(workspace: str, workflow: str, run_id: str) -> int:
+    """Forget everything remembered from a run (used when a run is deleted): its scope, with the
+    pattern and what memory extracted from it. Returns how many items were removed."""
     mem = _open()
     if mem is None:
         return 0
     try:
-        return (await mem.forget(f"run {run_id}")).deleted
+        return (await mem.scopes.forget(run_scope(workspace, workflow, run_id))).forgotten
     except Exception as exc:
         log.warning("agent memory forget failed: %s", type(exc).__name__)
         return 0

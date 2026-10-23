@@ -43,11 +43,11 @@ async def main() -> int:
         return 1
     run = await db.get_run_with_steps(args.workspace, exp["parent_run"])
     stored = await db.get_latest_rca_report(args.workspace, exp["parent_run"])
-    ok = await remember_experiment(args.workspace, exp, run, report_view(stored) if stored else None)
-    if ok:
-        await db.update_experiment(args.workspace, exp["id"], {"remembered": True})
-    print("remembered" if ok else "FAILED to remember (see the probe: scripts/probe_memory.py)")
-    return 0 if ok else 1
+    scope = await remember_experiment(args.workspace, exp, run, report_view(stored) if stored else None)
+    if scope:
+        await db.update_experiment(args.workspace, exp["id"], {"remembered": True, "memory_scope": scope})
+    print(f"remembered in scope {scope}" if scope else "FAILED to remember (see the probe: scripts/probe_memory.py)")
+    return 0 if scope else 1
 
 
 if __name__ == "__main__":

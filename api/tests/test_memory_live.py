@@ -59,20 +59,32 @@ async def record_failing_run(ws, client, tools, account):
     return await db.get_run_with_steps(ws, r.id)
 
 
+async def register_in_db(ws, exp, scope):
+    """What the experiment runner does after remembering: keep the scope so recall can find it."""
+    await db.apply_schema()
+    await db.create_experiment(ws, exp["id"], {"remembered": True, "memory_scope": scope,
+                                               "finished_at": "2026-01-01T00:00:00+00:00"})
+
+
 def test_remember_recall_and_forget_round_trip_with_provenance():
     ws = f"test-{uuid.uuid4().hex[:8]}"
     run = {"id": uuid.uuid4().hex, "workflow": "renewal_brief", "oracle_detail": {"open_tickets_ok": False},
            "steps": [{"node_run_idx": 1, "agent": "planner"}]}
     exp = synthetic_experiment(run["id"])
     try:
-        assert asyncio.run(memory.remember_experiment(ws, exp, run, None)) is True
+        scope = asyncio.run(memory.remember_experiment(ws, exp, run, None))
+        assert scope == memory.run_scope(ws, "renewal_brief", run["id"])
+        asyncio.run(register_in_db(ws, exp, scope))
+
         found = poll(lambda: memory.recall_patterns(ws, "renewal_brief", ["open_tickets"]), bool)
         assert [f["experiment"] for f in found] == [exp["id"]] and found[0]["run"] == run["id"]
         assert asyncio.run(memory.recall_patterns("test-someone-else", "renewal_brief", ["open_tickets"])) == []
-        assert asyncio.run(memory.forget_run(run["id"])) >= 1
+
+        assert asyncio.run(memory.forget_run(ws, "renewal_brief", run["id"])) >= 1
         assert poll(lambda: memory.recall_patterns(ws, "renewal_brief", ["open_tickets"]), lambda r: not r) == []
     finally:
-        asyncio.run(_cleanup_scope(ws))
+        asyncio.run(memory.forget_run(ws, "renewal_brief", run["id"]))
+        asyncio.run(db.purge_workspace(ws))
 
 
 def test_a_second_failing_run_gets_seen_before_with_a_link_to_the_earlier_experiment():
@@ -85,34 +97,27 @@ def test_a_second_failing_run_gets_seen_before_with_a_link_to_the_earlier_experi
         await db.apply_schema()
         run = await record_failing_run(ws, client, tools, account)
         assert run["outcome"] == "fail"
-        report = None
         exp = synthetic_experiment(run["id"])
-        assert await memory.remember_experiment(ws, exp, run, report) is True
-        return exp
+        scope = await memory.remember_experiment(ws, exp, run, None)
+        assert scope, "the verified pattern should be stored"
+        await register_in_db(ws, exp, scope)
+        return exp, run["id"]
 
     async def second_failure():
         run = await record_failing_run(ws, client, tools, account)
         return await generate_report(ws, run, REGISTRY[run["workflow"]], client)
 
+    first_run = None
     try:
-        exp = asyncio.run(first_failure())
+        exp, first_run = asyncio.run(first_failure())
         poll(lambda: memory.recall_patterns(ws, "renewal_brief", ["open_tickets"]), bool)
         report = asyncio.run(second_failure())
         assert [r["experiment"] for r in report["recalled"]] == [exp["id"]]
         matches = [c for c in report["candidates"] if c["matches_past_pattern"] == exp["id"]]
         assert matches, "the agent should recognise the pattern it was shown"
-        assert "seen before" in matches[0]["hypothesis"].lower() or "past" in matches[0]["hypothesis"].lower() \
-            or "earlier" in matches[0]["hypothesis"].lower() or "previous" in matches[0]["hypothesis"].lower()
+        import re
+        assert re.search(r"seen before|earlier|past|previous|prior", matches[0]["hypothesis"], re.I), matches[0]["hypothesis"]
     finally:
-        asyncio.run(_cleanup_scope(ws))
+        if first_run:
+            asyncio.run(memory.forget_run(ws, "renewal_brief", first_run))
         asyncio.run(db.purge_workspace(ws))
-
-
-async def _cleanup_scope(ws):
-    mem = memory._open()
-    try:
-        await mem.scopes.forget(memory.scope_for(ws, "renewal_brief"))
-    except Exception:
-        pass
-    finally:
-        await mem.close()

@@ -3,7 +3,7 @@
     cd api && .venv/bin/python scripts/probe_memory.py
 
 Checks reachability, auth, scope registration, remember, recall (with provenance in the text)
-and forget, in a throwaway scope that it cleans up. Prints structure, never the key. Run this
+and an exact forget (by the run's scope), in a throwaway scope that it cleans up. Prints structure, never the key. Run this
 first if remembering or recalling misbehaves.
 """
 
@@ -29,8 +29,8 @@ async def main() -> int:
         return 1
 
     mem = AsyncMemory(s.spectron_context, endpoint=s.spectron_endpoint, api_key=s.spectron_api_key, timeout=30.0)
-    scope = memory.scope_for(f"test-probe-{uuid.uuid4().hex[:6]}", "probe_workflow")
     exp, run = uuid.uuid4().hex, uuid.uuid4().hex
+    scope = memory.run_scope(f"test-probe-{uuid.uuid4().hex[:6]}", "probe_workflow", run)
     text = (f"In workflow probe_workflow, the failure on open_tickets was traced to the planner step (node run 1). "
             f"Editing plan moved the success rate from 0/3 to 3/3. Source: experiment {exp}, run {run}.")
     try:
@@ -54,11 +54,12 @@ async def main() -> int:
         ok_recall = any(exp in h.text for h in hits)
         print("recalled with provenance:", ok_recall)
 
-        deleted = (await mem.forget(f"run {run}")).deleted
-        print("forget(query by run id) deleted:", deleted)
+        forgotten = (await mem.scopes.forget(scope)).forgotten
+        print("scopes.forget(run scope) removed:", forgotten, "items")
         after = (await mem.recall("probe_workflow open_tickets", k=5, lens=[scope])).hits
-        print("hits after forget:", len([h for h in after if exp in h.text]))
-        return 0 if ok_recall else 1
+        left = len([h for h in after if exp in h.text])
+        print("hits still recallable after forget:", left)
+        return 0 if (ok_recall and forgotten and not left) else 1
     except Exception as exc:
         print(f"FAIL: {type(exc).__name__}: {str(exc)[:300]}")
         return 1
