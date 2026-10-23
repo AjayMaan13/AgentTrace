@@ -15,7 +15,7 @@ import { verdictFor } from "@/lib/verdict";
 /** What the selected node is. Everything on the line opens here: the request, an agent, a change, the
  * runs that followed it, and the answer. */
 export function NodePanel({
-  node, run, report, experiments, mode, runHref, experimentHref, onFork, onForkBranch, canFork = true,
+  node, run, report, experiments, mode, runHref, experimentHref, onForkBranch, canFork = true,
 }: {
   onForkBranch?: (experimentId: string, nodeRun: number) => void; // fork one of a fork's own runs
   canFork?: boolean; // false for imported runs: they can be read, not forked
@@ -26,7 +26,6 @@ export function NodePanel({
   mode: "app" | "demo";
   runHref: (runId: string) => string;
   experimentHref: (id: string) => string | null;
-  onFork: (nodeRun: number) => void;
 }) {
   if (!node) {
     return (
@@ -40,10 +39,8 @@ export function NodePanel({
       <section className="card p-5" aria-live="polite" aria-label="Details: new fork">
         <h3 className="font-serif text-xl">Your new fork</h3>
         <p className="mt-1 max-w-prose text-muted">
-          This line is not running yet. Change what this agent decided in the form below, choose how many
-          runs, and click Fork and run. Then this line becomes real and fills in as the runs finish.
+          This line is not running yet. Change a value in the editor beside it, then click Fork and run. This line becomes real and fills in as the runs finish.
         </p>
-        <button type="button" className="btn btn-primary mt-3" onClick={() => onFork(0)}>Go to the form</button>
       </section>
     );
   }
@@ -51,7 +48,7 @@ export function NodePanel({
   return (
     <section className="card p-5" aria-live="polite" aria-label={`Details: ${node.label}`}>
       {node.kind === "start" && <Request run={run} />}
-      {node.kind === "agent" && <AgentDetail node={node} run={run} report={report} mode={mode} onFork={onFork} canFork={canFork} />}
+      {node.kind === "agent" && <AgentDetail node={node} run={run} report={report} mode={mode} canFork={canFork} />}
       {node.kind === "edited" && exp && <Edited exp={exp} node={node} href={experimentHref(exp.id)} />}
       {node.kind === "live" && exp && <Live exp={exp} node={node} runHref={runHref} onFork={mode === "app" && canFork && onForkBranch ? () => onForkBranch(exp.id, node.nodeRun ?? 0) : undefined} />}
       {node.kind === "result" && !exp && <Answer run={run} />}
@@ -74,8 +71,8 @@ function Request({ run }: { run: Run }) {
 }
 
 function AgentDetail({
-  node, run, report, mode, onFork, canFork,
-}: { node: GNode; run: Run; report: RcaReport | null; mode: "app" | "demo"; onFork: (nodeRun: number) => void; canFork: boolean }) {
+  node, run, report, mode, canFork,
+}: { node: GNode; run: Run; report: RcaReport | null; mode: "app" | "demo"; canFork: boolean }) {
   const steps = run.steps.filter((s) => s.node_run_idx === node.nodeRun).sort((a, b) => a.idx - b.idx);
   const [pick, setPick] = useState(0);
   const step = steps[Math.min(pick, steps.length - 1)];
@@ -87,15 +84,7 @@ function AgentDetail({
           <h3 className="font-serif text-xl capitalize">{node.label}</h3>
           <p className="text-muted">{where(run, node.nodeRun)}</p>
         </div>
-        {mode === "app" && !canFork ? (
-          <span className="rounded-full border border-line px-3 py-1 text-muted">View only</span>
-        ) : mode === "app" ? (
-          <button type="button" className="btn btn-primary" onClick={() => onFork(node.nodeRun ?? 0)}>
-            Fork here
-          </button>
-        ) : (
-          <Link href="/sign-in" className="btn">Sign in to fork here</Link>
-        )}
+        {mode === "app" && !canFork && <span className="rounded-full border border-line px-3 py-1 text-muted">View only</span>}
       </div>
       {cause && (
         <p className="rounded-lg border border-bad/30 bg-bad-tint p-3 text-ink">

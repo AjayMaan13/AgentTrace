@@ -26,7 +26,7 @@ export function LandingGraph({ demo }: { demo: Demo }) {
       />
       <NodePanel
         node={node} run={demo.run} report={demo.rca} experiments={demo.experiments} mode="demo"
-        runHref={(id) => `/demo/runs/${id}`} experimentHref={() => null} onFork={() => {}}
+        runHref={(id) => `/demo/runs/${id}`} experimentHref={() => null}
       />
     </div>
   );

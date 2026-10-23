@@ -16,11 +16,12 @@ import { useApi } from "@/lib/api";
 import { formatTime, formatTokens } from "@/lib/format";
 import { buildGraph } from "@/lib/graph";
 import { marksFromReport } from "@/lib/story";
-import type { Candidate, Experiment, RcaReport, Run, State } from "@/lib/types";
+import type { Experiment, RcaReport, Run, State } from "@/lib/types";
 import { useApiData } from "@/lib/use-api-data";
 
-/** A run as a story: the answer, the line of agents that produced it (with every fork as a branch),
- * why it probably failed, and a way to fork it. `mode="demo"` is the public read-only view. */
+/** A run as a workbench. The answer and what was wrong with it, the line of agents with every fork as a branch,
+ * and, under the line, whatever you select: what went in, what came out, and the editor to change it and fork.
+ * `mode="demo"` is the public read-only view. */
 export function RunView({
   run, mode = "app", report = null, experiments = [], titleLevel = 1, extra = null,
 }: {
@@ -41,6 +42,8 @@ function AppRun({ run, titleLevel }: { run: Run; titleLevel: 1 | 2 }) {
   return <RunBody run={run} mode="app" report={null} experiments={experiments} forksError={forksError} titleLevel={titleLevel} onForked={() => setTick((t) => t + 1)} initialSelected={fork ? `${fork}:end` : null} />;
 }
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 function RunBody({
   run, mode, report, experiments, titleLevel, onForked, extra = null, initialSelected = null, forksError = null,
 }: {
@@ -55,11 +58,10 @@ function RunBody({
   const known = report ?? saved;
   const marks = useMemo(() => marksFromReport(known), [known]);
   const [selected, setSelected] = useState<string | null>(initialSelected);
-  const [fix, setFix] = useState<{ nodeRunIdx: number; patch: State; nonce: number } | null>(null);
-  // The fork being set up: which agent, and (when it is made inside another fork) which fork. Its line is drawn at once.
-  const [draft, setDraft] = useState<{ nodeRun: number; fromExperiment: string | null } | null>(null);
-  // When forking inside a fork, the fork starts from one real run of that fork, so the form needs that run.
-  const [base, setBase] = useState<{ experimentId: string; runId: string } | null>(null);
+  const [suggest, setSuggest] = useState<{ nodeRun: number; patch: State; nonce: number } | null>(null); // "Test this fix" from the cause box
+  const [dirty, setDirty] = useState(false); // the editor holds a change: the new line is drawn as it would be
+  // When forking inside a fork, the fork starts from one real run of that fork, so the editor needs that run.
+  const [base, setBase] = useState<{ experimentId: string; runId: string; nodeRun: number } | null>(null);
   const [loaded, setLoaded] = useState<{ id: string; run: Run } | null>(null);
   const baseRun = base && loaded?.id === base.runId ? loaded.run : null;
   const [forkNote, setForkNote] = useState<string | null>(null);
@@ -77,97 +79,162 @@ function RunBody({
   const got = run.oracle_detail?.footer?.open_tickets;
   const want = run.oracle_detail?.truth?.open_tickets;
   const resultText = got !== undefined && want !== undefined ? `${got} open tickets, not ${want}` : undefined;
-  // Rebuilt from the current data, so a fork that finishes updates the node you are looking at.
+  const canFork = mode === "app" && run.forkable !== false;
+
+  const picked = selected ? buildGraph(run.steps, { marks, experiments, outcome: run.outcome, resultText }).nodes.find((n) => n.id === selected) ?? null : null;
+  // What the editor is for: the agent selected on the original line, or an agent inside the fork that is being forked.
+  const target = picked?.kind === "agent" ? { nodeRun: picked.nodeRun ?? 0, from: null as string | null }
+    : base && picked?.experiment === base.experimentId ? { nodeRun: base.nodeRun, from: base.experimentId } : null;
+  const draftRun = dirty && target ? target.nodeRun : null;
+  const draftFrom = dirty && target ? target.from : null;
   const graph = useMemo(
-    () => buildGraph(run.steps, { marks, experiments, outcome: run.outcome, resultText, draft }),
-    [run.steps, run.outcome, marks, experiments, resultText, draft],
+    () => buildGraph(run.steps, { marks, experiments, outcome: run.outcome, resultText, draft: draftRun === null ? null : { nodeRun: draftRun, fromExperiment: draftFrom } }),
+    [run.steps, run.outcome, marks, experiments, resultText, draftRun, draftFrom],
   );
   const node = selected ? graph.nodes.find((n) => n.id === selected) ?? null : null;
 
-  function scrollToForm() {
-    setTimeout(() => {
-      const panel = document.getElementById("test-fix");
-      panel?.scrollIntoView({ behavior: "smooth", block: "start" });
-      panel?.focus({ preventScroll: true });
-    }, 50);
-  }
-  function startFork(nodeRunIdx: number, patch: State = {}) {
-    setBase(null);
+  function select(id: string) {
     setForkNote(null);
-    setDraft({ nodeRun: nodeRunIdx, fromExperiment: null });
-    setFix((prev) => ({ nodeRunIdx, patch, nonce: (prev?.nonce ?? 0) + 1 }));
-    scrollToForm();
+    setSelected((s) => (s === id ? null : id));
   }
   /** Fork inside a fork: start from one finished run of that fork (its change already applied). */
   function startForkInside(experimentId: string, nodeRunIdx: number) {
-    const exp = experiments.find((e) => e.id === experimentId);
-    const runId = exp?.tiles.find((t) => t.arm === "treatment" && t.run_id)?.run_id;
+    const runId = experiments.find((e) => e.id === experimentId)?.tiles.find((t) => t.arm === "treatment" && t.run_id)?.run_id;
     if (!runId) {
       setForkNote("That fork has no finished run yet, so there is nothing to fork from. Wait for a run to finish, then try again.");
       return;
     }
     setForkNote(null);
-    setBase({ experimentId, runId });
-    setDraft({ nodeRun: nodeRunIdx, fromExperiment: experimentId });
-    setFix((prev) => ({ nodeRunIdx, patch: {}, nonce: (prev?.nonce ?? 0) + 1 }));
-    scrollToForm();
+    setBase({ experimentId, runId, nodeRun: nodeRunIdx });
+    document.getElementById("run-dock")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
-  function testCandidate(c: Candidate) {
-    if (c.proposed_edit) startFork(c.node_run_idx, c.proposed_edit.patch);
+  function testSuggestion(nodeRun: number, patch: State) {
+    setBase(null);
+    setSuggest((prev) => ({ nodeRun, patch, nonce: (prev?.nonce ?? 0) + 1 }));
+    setSelected(`a${nodeRun}`);
+    document.getElementById("run-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  const canFork = mode === "app" && run.forkable !== false;
+
   const benchmark = experiments.find((e) => e.benchmark)?.benchmark ?? null;
+  const topSuspect = known && known.candidates.length ? known.candidates[(known.verification?.ranking ?? [0])[0]] : null;
+  const showEditor = canFork && target !== null && (target.from === null || baseRun !== null);
+  const editorRun = target?.from ? baseRun : run;
+  const editorKey = `${target?.from ?? run.id}-${target?.nodeRun}-${suggest?.nodeRun === target?.nodeRun ? suggest?.nonce : 0}`;
 
   return (
     <div className="flex flex-col gap-10">
-      <header className="flex flex-col gap-3">
-        <Title className="max-w-3xl font-serif text-[1.75rem] leading-tight sm:text-[2.25rem]">
-          {!failed ? "This run gave the right answer." : got !== undefined && want !== undefined ? `The brief says ${got} open tickets, not ${want}.` : "This run gave a wrong answer."}
-        </Title>
-        {run.oracle_detail && <Checks detail={run.oracle_detail} />}
-        <p className="text-muted">
-          {mode === "demo" && "Saved example. "}{run.workflow} · {formatTime(run.started_at)} · {run.steps.length} steps ·{" "}
-          {formatTokens((run.tokens_in ?? 0) + (run.tokens_out ?? 0))} tokens
-          {run.kind === "fork" && " · this run is part of a fork"}
-        </p>
-        {mode === "app" && <DeleteRun runId={run.id} />}
+      <header className="grid items-end gap-6 lg:grid-cols-[1fr_auto]">
+        <div className="flex flex-col gap-3">
+          <Title className="max-w-3xl font-serif text-[1.75rem] leading-tight sm:text-[2.25rem]">
+            {!failed ? "This run gave the right answer." : got !== undefined && want !== undefined ? `The brief says ${got} open tickets, not ${want}.` : "This run gave a wrong answer."}
+          </Title>
+          {run.oracle_detail && <Checks detail={run.oracle_detail} />}
+          <p className="text-muted">
+            {mode === "demo" && "Saved example. "}{run.workflow} · {formatTime(run.started_at)} · {run.steps.length} steps ·{" "}
+            {formatTokens((run.tokens_in ?? 0) + (run.tokens_out ?? 0))} tokens
+            {run.kind === "fork" && " · this run is part of a fork"}
+          </p>
+          {mode === "app" && <DeleteRun runId={run.id} />}
+        </div>
+        {got !== undefined && want !== undefined && (
+          <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-line bg-line" style={{ gap: 1 }} aria-label="What the brief said and the real number">
+            <div className="bg-sheet px-6 py-4">
+              <p className="text-muted">The brief said</p>
+              <p className="font-serif text-[3.25rem] leading-none text-bad">{got}</p>
+              <p className="mt-1 text-muted">open tickets</p>
+            </div>
+            <div className="bg-sheet px-6 py-4">
+              <p className="text-muted">The real number</p>
+              <p className="font-serif text-[3.25rem] leading-none text-good">{want}</p>
+              <p className="mt-1 text-muted">checked in code</p>
+            </div>
+          </div>
+        )}
       </header>
 
       <section id="run-graph" aria-label="The run as a line" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h2 className="font-serif text-2xl">How the run went</h2>
-          <p className="text-muted">Left to right, in the order things ran. A fork opens a new line. <span className="sm:hidden">Swipe sideways to follow it.</span></p>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+          <div>
+            <h2 className="font-serif text-2xl">How the run went</h2>
+            <p className="text-muted">Left to right, in the order things ran. Select an agent to look inside it.</p>
+          </div>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.8125rem] text-muted" aria-label="Key">
+            <li className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-bad" aria-hidden />Likely cause</li>
+            <li className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-warn" aria-hidden />Affected by it</li>
+            <li className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full border border-dashed border-ink" aria-hidden />Changed by a fork</li>
+          </ul>
         </div>
         <FlowGraph
           steps={run.steps} marks={marks} experiments={experiments} outcome={run.outcome} resultText={resultText}
-          selected={selected} onSelect={(n) => setSelected((s) => (s === n.id ? null : n.id))}
-          draft={draft}
+          selected={selected} onSelect={(n) => select(n.id)} draft={draftRun === null ? null : { nodeRun: draftRun, fromExperiment: draftFrom }}
         />
-        {forkNote && <p role="alert" className="rounded-lg border border-bad/30 bg-bad-tint px-3 py-2 text-bad">{forkNote}</p>}
         {forksError && (
           <p role="alert" className="rounded-lg border border-bad/30 bg-bad-tint px-3 py-2 text-bad">
             Could not load this run&apos;s forks ({forksError}). A fork you start will still run, but it will not show here until this loads. If you just updated the app, restart the API.
           </p>
         )}
-        {run.steps.some((s) => s.origin !== "recorded") && (
-          <p className="text-[0.8125rem] text-muted">
-            This run was made by a fork. <b className="font-medium text-ink">Replayed</b> steps are copied exactly from the recording and call no model.{" "}
-            <b className="font-medium text-ink">Live</b> steps ran again against Claude, so they are sampled and can differ from run to run.
-          </p>
-        )}
-        <p className="text-[0.8125rem] text-muted">
-          In this workflow each agent waits for the one before it, so the line has no side-by-side agents. AgentTrace records the
-          order steps ran in, not their start times, so it cannot yet draw agents that ran at the same time.
-        </p>
-        <NodePanel
-          node={node} run={run} report={known} experiments={experiments} mode={mode}
-          runHref={(id) => (mode === "demo" ? `/demo/runs/${id}` : `/runs/${id}`)}
-          experimentHref={(id) => (mode === "demo" ? null : `/experiments/${id}`)}
-          onFork={(n) => (n === 0 ? scrollToForm() : startFork(n))} onForkBranch={startForkInside} canFork={canFork}
-        />
+        {forkNote && <p role="alert" className="rounded-lg border border-bad/30 bg-bad-tint px-3 py-2 text-bad">{forkNote}</p>}
+        <details className="text-[0.8125rem] text-muted">
+          <summary className="cursor-pointer hover:text-ink">How to read this line</summary>
+          <div className="mt-2 flex max-w-[70ch] flex-col gap-2">
+            {run.steps.some((s) => s.origin !== "recorded") && (
+              <p>
+                This run was made by a fork. <b className="font-medium text-ink">Replayed</b> steps are copied exactly from the recording and call no model.{" "}
+                <b className="font-medium text-ink">Live</b> steps ran again against Claude, so they are sampled and can differ from run to run.
+              </p>
+            )}
+            <p>A fork leaves the line at the dot, just before the agent it changed, and opens a new line under it. Each fork is run several times with the change and without it.</p>
+            <p>In this workflow each agent waits for the one before it, so there are no side-by-side agents. AgentTrace records the order steps ran in, not their start times.</p>
+          </div>
+        </details>
+
+        {/* The dock: what you selected, and (when you can change it) the editor beside it. */}
+        <div id="run-dock" className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          {!node ? (
+            <Guide
+              className="lg:col-span-2" mode={mode} canFork={canFork}
+              suspect={topSuspect ? { agent: agents.get(topSuspect.node_run_idx) ?? "agent", nodeRun: topSuspect.node_run_idx } : null}
+              onPick={(nodeRun) => setSelected(`a${nodeRun}`)}
+            />
+          ) : (
+            <>
+              <div className={showEditor || (mode === "demo" && node.kind === "agent") ? "" : "lg:col-span-2"}>
+                <NodePanel
+                  node={node} run={run} report={known} experiments={experiments} mode={mode}
+                  runHref={(id) => (mode === "demo" ? `/demo/runs/${id}` : `/runs/${id}`)}
+                  experimentHref={(id) => (mode === "demo" ? null : `/experiments/${id}`)}
+                  onForkBranch={startForkInside} canFork={canFork}
+                />
+              </div>
+              {showEditor && editorRun && (
+                <TestFixPanel
+                  key={editorKey} run={editorRun}
+                  request={{ nodeRunIdx: target!.nodeRun, patch: suggest?.nodeRun === target!.nodeRun ? suggest.patch : {} }}
+                  baseLabel={target!.from ? graph.lanes.find((l) => l.experiment === target!.from)?.label.split(":")[0] : undefined}
+                  onDirty={setDirty}
+                  onLaunched={(id) => {
+                    onForked?.(id);
+                    setBase(null);
+                    setSuggest(null);
+                    setSelected(`${id}:end`);
+                    document.getElementById("run-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                />
+              )}
+              {canFork && target?.from && !baseRun && !forkNote && <p className="card p-5 text-muted">Loading that fork&apos;s run…</p>}
+              {mode === "demo" && node.kind === "agent" && (
+                <section className="card flex flex-col gap-2 p-5 lg:sticky lg:top-4">
+                  <h3 className="font-serif text-xl">Change it, then fork</h3>
+                  <p className="text-muted">In your own workspace you edit what this agent produced here. A new line opens on the graph and everything after it runs again, with and without your change.</p>
+                  <div><Link href="/sign-in" className="btn btn-primary">Sign in to fork</Link></div>
+                </section>
+              )}
+            </>
+          )}
+        </div>
       </section>
 
-      {mode === "app" && !canFork ? (
+      {mode === "app" && !canFork && (
         <section className="card p-5">
           <h2 className="font-serif text-xl">This run is view only</h2>
           <p className="mt-1 max-w-[60ch] text-muted">
@@ -175,26 +242,9 @@ function RunBody({
             workflow connected to a replay worker. That is not available yet, so runs you record or import yourself stay view only.
           </p>
         </section>
-      ) : mode === "app" ? (
-        <>
-          <RcaPanel run={run} onTest={testCandidate} onReport={setSaved} />
-          {base && !baseRun ? (
-            <p id="test-fix" tabIndex={-1} className="card p-5 text-muted">Loading that fork&apos;s run…</p>
-          ) : (
-          <TestFixPanel
-            key={`${base?.runId ?? run.id}-${fix?.nonce ?? 0}`} run={base && baseRun ? baseRun : run} request={fix}
-            baseLabel={base ? graph.lanes.find((l) => l.experiment === base.experimentId)?.label.split(":")[0] : undefined}
-            onLaunched={(id) => {
-              onForked?.(id);
-              setDraft(null);
-              setBase(null);
-              setSelected(`${id}:end`);
-              document.getElementById("run-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
-          />
-          )}
-        </>
-      ) : (
+      )}
+      {mode === "app" && canFork && <RcaPanel run={run} onTest={(c) => c.proposed_edit && testSuggestion(c.node_run_idx, c.proposed_edit.patch)} onReport={setSaved} />}
+      {mode === "demo" && (
         <>
           {report && (
             <RcaView report={report} agentOf={(i) => agents.get(i) ?? "?"} canRun={false} busy={false}
@@ -210,5 +260,35 @@ function RunBody({
         </>
       )}
     </div>
+  );
+}
+
+/** Before anything is selected: what to do, in three short moves, and a way in at the likely cause. */
+function Guide({
+  mode, canFork, suspect, onPick, className = "",
+}: { mode: "app" | "demo"; canFork: boolean; suspect: { agent: string; nodeRun: number } | null; onPick: (nodeRun: number) => void; className?: string }) {
+  const steps = [
+    ["Select an agent", "Click any agent on the line above."],
+    ["Read it", "See what went in, what came out, and what it passed to the next agent."],
+    [mode === "demo" ? "Sign in to fork" : canFork ? "Change it and fork" : "Look around", mode === "demo" ? "Change what it produced and a new line opens under the original." : canFork ? "Edit what it produced. A new line opens and everything after it runs again." : "This run is view only, so you can read every step but not fork it."],
+  ] as const;
+  return (
+    <section className={`card p-5 ${className}`} aria-label="What to do next">
+      <h3 className="font-serif text-xl">Select an agent on the line</h3>
+      <ul className="mt-3 grid gap-3 sm:grid-cols-3">
+        {steps.map(([title, text]) => (
+          <li key={title} className="rounded-lg bg-tile p-3">
+            <p className="font-medium">{title}</p>
+            <p className="mt-0.5 text-muted">{text}</p>
+          </li>
+        ))}
+      </ul>
+      {suspect && (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <p className="text-muted">The AI&apos;s best guess for the cause is the <b className="font-medium text-ink">{suspect.agent}</b>.</p>
+          <button type="button" className="btn" onClick={() => onPick(suspect.nodeRun)}>Look at the {cap(suspect.agent)}</button>
+        </div>
+      )}
+    </section>
   );
 }

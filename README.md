@@ -56,7 +56,7 @@ flowchart LR
 
 - `sdk/` stdlib-only recorder: `trace_run`, `@node`, `@tool`, `TracedLLM`, redaction, `HttpSink`.
 - `api/` FastAPI service: ingest, read API, replay engine ([fork.py](api/app/replay/fork.py)), experiment runner and statistics ([experiments/](api/app/experiments)), root-cause agent ([rca/](api/app/rca)), security ([security/](api/app/security)), workflow and oracle ([workflows/renewal_brief](api/app/workflows/renewal_brief)).
-- `web/` Next.js (App Router) UI: each run drawn as one continuous line of agents, left to right, with every fork opening a new branch line; select any node to see what it is; a guided "Fork this run" form; and the public `/demo`.
+- `web/` Next.js (App Router) UI: a run is a workbench. The answer and a scoreboard at the top, the run drawn as one continuous line of agents with every fork opening a new branch under it, and, for the agent you select, what went in, what came out and what it passed on, beside an editor where you change it and fork. A dashed new line appears on the graph as soon as you change a value. Plus the public `/demo`.
 - Experiments run as asyncio tasks inside the API process, 3 at a time.
 
 ## Root-cause agent
