@@ -77,11 +77,8 @@ export function RunView({
               )}
               <section className="rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700">
                 <h2 className="text-lg font-semibold">Fork a run yourself</h2>
-                <p className="mt-1 text-zinc-700 dark:text-zinc-300">
-                  This is a read-only demo of saved results. Sign in to record your own runs, edit a step, and
-                  run your own control-versus-treatment experiment.
-                </p>
-                <Link href="/sign-in" className="mt-3 inline-block rounded-md bg-zinc-900 px-4 py-2 font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">
+                <p className="mt-1 text-zinc-400">This demo is read-only. Sign in to edit a step and run your own experiment.</p>
+                <Link href="/sign-in" className="accent-bg mt-3 inline-block rounded-md px-4 py-2 font-semibold hover:opacity-90">
                   Sign in
                 </Link>
               </section>
@@ -107,8 +104,8 @@ function Oracle({ detail, outcome }: { detail: OracleDetail; outcome?: string })
           : "border-red-700 text-red-900 dark:text-red-200"
       }`}
     >
-      <b>Oracle (checked in code against the data):</b> open tickets reported{" "}
-      <b>{got ?? "none (no valid footer)"}</b>, expected <b>{want ?? "?"}</b> {mark(detail.open_tickets_ok)} · pipeline{" "}
+      <b>Checked in code:</b> reported <b>{got ?? "no valid footer"}</b> open tickets, expected <b>{want ?? "?"}</b>{" "}
+      {mark(detail.open_tickets_ok)} · pipeline{" "}
       {mark(detail.pipeline_ok)} · critic loop {mark(detail.critic_loop_ok)}
     </p>
   );

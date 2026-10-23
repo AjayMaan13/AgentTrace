@@ -21,7 +21,7 @@ export function ExperimentView({
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <Heading className="text-2xl font-semibold tracking-tight">{title ?? `Experiment ${shortId(e.id)}`}</Heading>
-        {blurb && <p className="text-base text-zinc-700 dark:text-zinc-300">{blurb}</p>}
+        {blurb && <p className="text-zinc-400">{blurb}</p>}
         <p className="text-sm text-zinc-700 dark:text-zinc-300">
           Forked from{" "}
           <Link href={runHref(e.parent_run)} className="font-mono underline underline-offset-4">
@@ -50,8 +50,7 @@ export function ExperimentView({
           ))}
         </div>
         <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
-          Grey queued · pulsing running · green passed · red failed · orange errored · dashed skipped (token
-          ceiling). Select a finished tile to open its run.
+          Green passed · red failed · orange errored. Select a tile to open its run.
         </p>
       </section>
 
@@ -95,9 +94,8 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
       </p>
       {stats.wilson.control && stats.wilson.treatment && (
         <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-          95% Wilson intervals: control {percent(stats.wilson.control[0])}–{percent(stats.wilson.control[1])},
-          treatment {percent(stats.wilson.treatment[0])}–{percent(stats.wilson.treatment[1])}. Small N shows direction
-          and effect size, not proof.
+          95% intervals: control {percent(stats.wilson.control[0])}–{percent(stats.wilson.control[1])}, treatment{" "}
+          {percent(stats.wilson.treatment[0])}–{percent(stats.wilson.treatment[1])}. Small N shows direction, not proof.
         </p>
       )}
 
@@ -122,8 +120,8 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
         </p>
       )}
       <p className="mt-4 text-xs text-zinc-600 dark:text-zinc-400">
-        Steps before the fork replay exactly from the recording. Steps after it ran live against Claude and are
-        sampled, not deterministic: that is why each arm runs N times. {formatTokens(e.tokens_used)} tokens used.
+        Earlier steps replay exactly from the recording. Later steps ran live and are sampled, so each arm runs N
+        times. {formatTokens(e.tokens_used)} tokens.
       </p>
     </section>
   );

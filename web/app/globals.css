@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
+/* The site is dark only, like the tools it sits next to. `dark:` classes apply because <html> has
+   the "dark" class (see layout.tsx), whatever the visitor's system theme is. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #09090d;
+  --foreground: #ececf1;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,15 +17,25 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* One accent, used sparingly: the headline highlight, the primary button, the result glow. */
+.accent-text {
+  background: linear-gradient(90deg, #ff5ec4 0%, #c06bff 55%, #8b7bff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.accent-bg {
+  background: linear-gradient(90deg, #ff3fb0 0%, #a855f7 100%);
+  color: #fff;
+}
+
+.glow {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 80px -30px rgba(192, 107, 255, 0.45);
 }

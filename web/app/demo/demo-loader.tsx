@@ -16,18 +16,8 @@ type Demo = {
 const demoRun = (id: string) => `/demo/runs/${id}`;
 
 const COPY = {
-  decoy: {
-    title: "Test the obvious fix: make the critic stricter",
-    blurb:
-      "The wrong number reached the reviewer and was approved, so the tempting fix is a stricter critic. The same fork " +
-      "twice: control keeps the recorded critic output, treatment tells the critic to verify the count against the raw data.",
-  },
-  hero: {
-    title: "Test the root cause: fix the planner's ticket filter",
-    blurb:
-      "Same fork point twice, at the planner: control keeps its recorded plan, treatment applies the fix the root-cause " +
-      "agent proposed. Each run is checked in code against the real data, not by an LLM's opinion.",
-  },
+  decoy: { title: "Try the obvious fix", blurb: "Make the critic stricter and re-run. Does anything change?" },
+  hero: { title: "Test the real cause", blurb: "Fix the planner's ticket filter, with a no-edit control to compare against." },
 } as const;
 
 export function DemoLoader() {
@@ -40,17 +30,21 @@ export function DemoLoader() {
         return (
           <div className="flex flex-col gap-10">
             <header className="flex flex-col gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">A wrong answer, and the step that caused it</h1>
-              <p className="max-w-3xl text-base text-zinc-700 dark:text-zinc-300">
-                A four-agent workflow (planner → researcher → writer ⇄ critic) wrote a renewal-risk brief for a
-                customer account. It reported <b>{got ?? "the wrong number of"} open tickets</b>; the real data has{" "}
-                <b>{truth ?? "more"}</b>. A trace shows what happened. AgentTrace shows what <i>caused</i> it, and proves
-                the fix with a control arm. Everything below is a saved, real run against a simulated company.
+              <h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+                The brief says <span className="accent-text">{got ?? "the wrong number of"} open tickets</span>.
+                <br />
+                The truth is {truth ?? "more"}.
+              </h1>
+              <p className="max-w-2xl text-lg text-zinc-300">
+                A saved run of four AI agents. Follow it from the failure to a proven fix.
               </p>
             </header>
 
             <section className="flex flex-col gap-3" aria-label="The failing run">
-              <h2 className="text-2xl font-semibold tracking-tight">1. The failing run, and where it went wrong</h2>
+              <h2 className="text-2xl font-semibold tracking-tight">
+                <span className="mr-2 font-mono text-zinc-500">1</span>See the failure
+              </h2>
+              <p className="-mt-1 text-zinc-400">Click any step. The root-cause agent ranks the suspects on the right.</p>
               <RunView run={demo.run} mode="demo" report={demo.rca} titleLevel={2} />
             </section>
 
@@ -58,21 +52,19 @@ export function DemoLoader() {
               const copy = COPY[e.role ?? "hero"];
               return (
                 <section key={e.id} aria-label={copy.title}>
-                  <ExperimentView experiment={e} title={`${i + 2}. ${copy.title}`} blurb={copy.blurb} runHref={demoRun} level={2} />
+                  <ExperimentView experiment={e} title={`${i + 2}  ${copy.title}`} blurb={copy.blurb} runHref={demoRun} level={2} />
                 </section>
               );
             })}
 
-            <footer className="rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700">
-              <p>
-                Recorded steps replay exactly from the stored recording. Steps after a fork re-run live against Claude,
-                so they are sampled, not deterministic. That is why every arm runs N times and results are shown as
-                k/N with a Fisher p-value, as directional evidence.
-              </p>
-              <p className="mt-2">
-                <Link href="/sign-in" className="font-semibold underline underline-offset-4">
-                  Sign in to try it on your own runs
-                </Link>
+            <footer className="flex flex-col items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <p className="text-xl font-semibold">Try it on your own runs</p>
+              <Link href="/sign-in" className="accent-bg rounded-lg px-5 py-2.5 font-semibold hover:opacity-90">
+                Sign in
+              </Link>
+              <p className="text-sm text-zinc-400">
+                Recorded steps replay exactly. Steps after a fork re-run live, so every arm runs N times and results
+                are directional.
               </p>
             </footer>
           </div>

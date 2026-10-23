@@ -13,9 +13,8 @@ export function BenchmarkTable({ benchmark: b }: { benchmark: Benchmark }) {
         Does the fix hold on other accounts?
       </h2>
       <p className="mb-3 text-sm text-zinc-700 dark:text-zinc-300">
-        The original planner prompt against the patched one on {b.accounts.length} other Era accounts, {b.n} fresh
-        end-to-end runs each. Passing means every oracle check matched Era&apos;s own data.
-        {b.excluded_account ? ` The account the fix was found on (${b.excluded_account}) is left out.` : ""}
+        Original vs patched prompt on {b.accounts.length} other accounts, {b.n} fresh runs each
+        {b.excluded_account ? ` (not ${b.excluded_account}, where the fix was found)` : ""}.
       </p>
       <div className="overflow-x-auto rounded-lg border border-zinc-300 dark:border-zinc-700">
         <table className="w-full min-w-[22rem] text-sm">
@@ -46,8 +45,7 @@ export function BenchmarkTable({ benchmark: b }: { benchmark: Benchmark }) {
         </table>
       </div>
       <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-        Directional: a small number of live, sampled runs per cell, not a proof. A run that crashed counts as not
-        passing.
+        Directional. A run that crashed counts as not passing.
       </p>
     </section>
   );

@@ -1,51 +1,55 @@
 import Link from "next/link";
+import { HeroResult } from "@/components/hero-result";
 
 const STEPS = [
-  ["Record", "Wrap a multi-agent workflow with the SDK. Every prompt, tool call and state change is captured, with secrets redacted before anything leaves your process."],
-  ["Fork", "Edit one step and fork. Steps before it replay exactly from the recording; steps after it re-run live against Claude."],
-  ["Measure", "Run the fork N times in a control arm (no edit) and a treatment arm (your edit). See 0/5 become 4/5, with a code-checked oracle, not an LLM judge."],
+  ["Record", "Capture every prompt, tool call and state change of a multi-agent run."],
+  ["Fork", "Change one step. Earlier steps replay exactly; later steps re-run live."],
+  ["Measure", "Run it again and again, with and without your change. Code checks every answer."],
 ] as const;
 
 export default function Home() {
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-10 px-4 py-10 sm:px-6 sm:py-16">
-      <header className="flex flex-col gap-4">
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          Find which step broke your multi-agent run, and prove the fix.
-        </h1>
-        <p className="max-w-2xl text-lg text-zinc-700 dark:text-zinc-300">
-          AgentTrace is a debugger for multi-agent LLM workflows. Traces show what happened. AgentTrace tests what
-          caused it: fork a recorded run at any step, and measure whether your edit changes the outcome.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/demo"
-            className="rounded-md bg-zinc-900 px-5 py-3 text-base font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
-          >
-            See the live demo
-          </Link>
-          <Link href="/sign-in" className="rounded-md border-2 border-zinc-900 px-5 py-3 text-base font-semibold dark:border-zinc-100">
-            Sign in
-          </Link>
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-20 px-4 py-12 sm:px-6 sm:py-20">
+      <section className="grid items-center gap-12 lg:grid-cols-2">
+        <div className="flex flex-col gap-6">
+          <p className="text-sm font-medium uppercase tracking-widest text-zinc-400">Debugger for multi-agent AI</p>
+          <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
+            Find the step that broke your agents. <span className="accent-text">Prove the fix.</span>
+          </h1>
+          <p className="max-w-md text-lg text-zinc-300">
+            Fork a failed run, change one step, and replay it live with and without your change.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/demo" className="accent-bg rounded-lg px-6 py-3 text-base font-semibold hover:opacity-90">
+              See the live demo
+            </Link>
+            <Link
+              href="/sign-in"
+              className="rounded-lg border border-white/20 px-6 py-3 text-base font-semibold hover:bg-white/5"
+            >
+              Sign in
+            </Link>
+          </div>
         </div>
-      </header>
+        <HeroResult />
+      </section>
 
       <section aria-label="How it works">
         <ol className="grid gap-4 sm:grid-cols-3">
           {STEPS.map(([title, text], i) => (
-            <li key={title} className="rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
-              <p className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">Step {i + 1}</p>
-              <h2 className="text-xl font-semibold">{title}</h2>
-              <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">{text}</p>
+            <li key={title} className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
+              <p className="font-mono text-sm text-zinc-500">0{i + 1}</p>
+              <h2 className="mt-2 text-2xl font-semibold">{title}</h2>
+              <p className="mt-2 text-zinc-300">{text}</p>
             </li>
           ))}
         </ol>
       </section>
 
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Recorded steps replay exactly. Forked steps re-run live and are sampled, never deterministic, so results are
-        shown as k/N per arm with a Fisher p-value and labelled directional.
-      </p>
+      <footer className="flex flex-col gap-2 border-t border-white/10 pt-8 text-sm text-zinc-400">
+        <p>Built with Claude, SurrealDB, Clerk and Era on Render.</p>
+        <p>Results are shown as passes out of N per arm with a Fisher exact p-value, as directional evidence.</p>
+      </footer>
     </main>
   );
 }

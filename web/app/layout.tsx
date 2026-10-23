@@ -34,18 +34,19 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <ClerkProvider>
-          <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-            <Link href="/" className="font-semibold tracking-tight">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-6">
+            <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+              <span aria-hidden className="accent-bg inline-block h-3 w-3 rounded-sm" />
               AgentTrace
             </Link>
             {/* Cache Components: request data (the session) must be read inside Suspense. */}
             <Suspense>
               <nav className="flex items-center gap-3 sm:gap-4">
-                <Link href="/demo" className="text-sm underline-offset-4 hover:underline">
+                <Link href="/demo" className="text-sm text-zinc-300 underline-offset-4 hover:text-white hover:underline">
                   Demo
                 </Link>
                 <Show when="signed-out">

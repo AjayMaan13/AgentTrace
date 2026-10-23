@@ -25,10 +25,9 @@ export function RcaView({
   return (
     <section aria-label="Root cause" className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
       <h2 className="text-lg font-semibold">Root cause</h2>
-      <p className="text-sm text-zinc-700 dark:text-zinc-300">
-        An AI agent reads the trace and follows the data back from the wrong answer. It ranks hypotheses; it does
-        not decide.{" "}
-        {readOnly ? "The experiments below test its proposals." : <>Use <b>Test this</b> to run an experiment with a control arm.</>}
+      <p className="text-sm text-zinc-400">
+        An AI agent follows the data back from the wrong answer and ranks suspects.{" "}
+        {readOnly ? "Experiments decide." : <>Use <b>Test this</b> to run an experiment.</>}
       </p>
 
       {!readOnly && <button
@@ -71,7 +70,7 @@ export function RcaView({
           {verification?.status === "done" && (
             <p className="rounded-md border border-zinc-300 p-2 text-sm font-medium dark:border-zinc-700">
               {report.verdict_idx !== null
-                ? `Auto-verdict: ${agentOf(report.candidates[report.verdict_idx].node_run_idx)} (node run ${report.candidates[report.verdict_idx].node_run_idx}), verified by experiment. Re-ranked by measured effect.`
+                ? `Verified by experiment: the ${agentOf(report.candidates[report.verdict_idx].node_run_idx)} step.`
                 : "No candidate beat its control, so none is verified. The ranking below is still the agent's opinion."}
             </p>
           )}
