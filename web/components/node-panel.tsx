@@ -15,8 +15,9 @@ import { verdictFor } from "@/lib/verdict";
 /** What the selected node is. Everything on the line opens here: the request, an agent, a change, the
  * runs that followed it, and the answer. */
 export function NodePanel({
-  node, run, report, experiments, mode, runHref, experimentHref, onFork, canFork = true,
+  node, run, report, experiments, mode, runHref, experimentHref, onFork, onForkBranch, canFork = true,
 }: {
+  onForkBranch?: (experimentId: string, nodeRun: number) => void; // fork one of a fork's own runs
   canFork?: boolean; // false for imported runs: they can be read, not forked
   node: GNode | null;
   run: Run;
@@ -52,7 +53,7 @@ export function NodePanel({
       {node.kind === "start" && <Request run={run} />}
       {node.kind === "agent" && <AgentDetail node={node} run={run} report={report} mode={mode} onFork={onFork} canFork={canFork} />}
       {node.kind === "edited" && exp && <Edited exp={exp} node={node} href={experimentHref(exp.id)} />}
-      {node.kind === "live" && exp && <Live exp={exp} node={node} runHref={runHref} />}
+      {node.kind === "live" && exp && <Live exp={exp} node={node} runHref={runHref} onFork={mode === "app" && canFork && onForkBranch ? () => onForkBranch(exp.id, node.nodeRun ?? 0) : undefined} />}
       {node.kind === "result" && !exp && <Answer run={run} />}
       {node.kind === "result" && exp && <Branch exp={exp} runHref={runHref} href={experimentHref(exp.id)} />}
     </section>
@@ -153,10 +154,13 @@ function Edited({ exp, node, href }: { exp: Experiment; node: GNode; href: strin
   );
 }
 
-function Live({ exp, node, runHref }: { exp: Experiment; node: GNode; runHref: (id: string) => string }) {
+function Live({ exp, node, runHref, onFork }: { exp: Experiment; node: GNode; runHref: (id: string) => string; onFork?: () => void }) {
   return (
     <>
+      <div className="flex flex-wrap items-start justify-between gap-3">
       <h3 className="font-serif text-xl"><span className="capitalize">{node.label}</span>, run again live</h3>
+      {onFork && <button type="button" className="btn btn-primary" onClick={onFork}>Fork here</button>}
+      </div>
       <p className="mt-1 max-w-prose text-muted">
         In this fork the {node.label} ran again {exp.n} times with the change and {exp.n} times without it, against Claude.
         Live runs are sampled, so they can differ from each other. Open any run below to see exactly what happened in it.

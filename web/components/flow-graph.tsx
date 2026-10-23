@@ -13,7 +13,7 @@ const TONE_TEXT: Record<Tone, string> = { neutral: "text-ink", good: "text-good"
 export function FlowGraph({
   steps, marks, experiments = [], outcome, resultText, selected, onSelect, draft = null,
 }: {
-  draft?: { nodeRun: number } | null;
+  draft?: { nodeRun: number; fromExperiment?: string | null } | null;
   steps: Step[];
   marks: Map<number, Mark>;
   experiments?: Experiment[];
@@ -30,8 +30,8 @@ export function FlowGraph({
       <div className="relative" style={{ width: graph.width, height: graph.height }}>
         <svg className="absolute inset-0" width={graph.width} height={graph.height} aria-hidden>
           <defs>
-            <marker id="tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
-              <path d="M0 0 L8 4 L0 8 z" fill="#9d998e" />
+            <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+              <path d="M0 1 L10 5 L0 9 z" fill="#9d998e" />
             </marker>
           </defs>
           {graph.edges.map((e) => <Edge key={e.id} edge={e} byId={byId} tone={graph.lanes[e.lane].tone} />)}
@@ -55,17 +55,28 @@ export function FlowGraph({
 }
 
 function Edge({ edge, byId, tone }: { edge: GEdge; byId: Map<string, GNode>; tone: Tone }) {
-  const a = byId.get(edge.from)!;
-  const b = byId.get(edge.to)!;
+  const a = byId.get(edge.from);
+  const b = byId.get(edge.to);
+  if (!a || !b) return null;
   const p = pos(a);
   const q = pos(b);
   const stroke = edge.lane === 0 ? "#6b675f" : tone === "good" ? "#4fa874" : tone === "bad" ? "#c9695d" : "#9d998e";
   if (edge.kind === "spawn") {
-    // The new line peels away from the original and settles into its own lane.
-    const d = `M ${p.x + R} ${p.y} C ${p.x + R + 70} ${p.y}, ${q.x - R - 70} ${q.y}, ${q.x - R} ${q.y}`;
-    return <path d={d} fill="none" stroke={stroke} strokeWidth={2} className="draw" style={{ ["--len" as string]: 420 }} markerEnd="url(#tip)" />;
+    // A new line leaves at a junction on the line it was forked from, between the agent before the
+    // change and the agent that was changed. It runs down to its own lane and turns toward that agent.
+    // Forks that share a junction share the run down, and each turns off at its own lane.
+    // Forks from different lines get slightly different runs down, so two of them never lie on top of each other.
+    const jx = (p.x + q.x) / 2 + Math.min(a.lane * 8, 40);
+    const r = 14;
+    const d = `M ${jx} ${p.y} V ${q.y - r} Q ${jx} ${q.y} ${jx + r} ${q.y} H ${q.x - R - 1}`;
+    return (
+      <g>
+        <path d={d} fill="none" stroke={stroke} strokeWidth={2} className="draw" style={{ ["--len" as string]: 400 }} markerEnd="url(#tip)" />
+        <circle cx={jx} cy={p.y} r={4} fill={stroke} />
+      </g>
+    );
   }
-  return <line x1={p.x + R} y1={p.y} x2={q.x - R} y2={q.y} stroke={stroke} strokeWidth={2} className={edge.lane === 0 ? "" : "draw"} style={{ ["--len" as string]: COL_W }} markerEnd="url(#tip)" />;
+  return <line x1={p.x + R + 1} y1={p.y} x2={q.x - R - 1} y2={q.y} stroke={stroke} strokeWidth={2} className={edge.lane === 0 ? "" : "draw"} style={{ ["--len" as string]: COL_W }} markerEnd="url(#tip)" />;
 }
 
 function Node({ node: n, selected, onSelect }: { node: GNode; selected: boolean; onSelect: (n: GNode) => void }) {

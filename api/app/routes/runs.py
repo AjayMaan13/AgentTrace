@@ -13,6 +13,8 @@ from app.workflows.registry import REGISTRY
 
 router = APIRouter(prefix="/v1")
 
+MAX_FORK_DEPTH = 4  # forks of forks of forks...: enough to read, and it bounds the work
+
 
 @router.get("/runs")
 async def list_runs(
@@ -37,7 +39,16 @@ async def list_run_experiments(run_id: str, workspace: str = Depends(read_worksp
     """The forks of this run, each as its experiment: they are drawn as branches of the run."""
     if not await db.run_exists(workspace, run_id):
         raise HTTPException(status_code=404, detail="Run not found")
-    return [experiment_view(e) for e in await db.list_experiments_for_run(workspace, run_id)]
+    # A fork can itself be forked, so follow the runs each fork made: its branches have branches.
+    found: list[dict[str, Any]] = []
+    frontier = [run_id]
+    for _ in range(MAX_FORK_DEPTH):
+        level = await db.list_experiments_for_runs(workspace, frontier)
+        if not level:
+            break
+        found += level
+        frontier = [t["run_id"] for e in level for t in e.get("tiles", []) if t.get("run_id")]
+    return [experiment_view(e) for e in sorted(found, key=lambda e: e.get("created_at", ""))]
 
 
 @router.delete("/runs/{run_id}")

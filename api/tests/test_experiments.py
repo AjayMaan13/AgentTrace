@@ -212,3 +212,12 @@ def test_another_workspace_cannot_list_the_forks(api, parent, login):
     run_experiment(parent, n=2)
     login("ws-b")
     assert api.get(f"/v1/runs/{parent}/experiments").status_code == 404
+
+
+def test_forks_of_forks_are_listed_with_the_run_they_branch_from(api, parent):
+    first = run_experiment(parent, n=2)
+    made = api.get(f"/v1/experiments/{first}").json()
+    attempt = next(t["run_id"] for t in made["tiles"] if t["arm"] == "treatment" and t["run_id"])
+    second = run_experiment(attempt, n=2)  # a fork made from one of the first fork's own runs
+    listed = {e["id"]: e["parent_run"] for e in api.get(f"/v1/runs/{parent}/experiments").json()}
+    assert listed == {first: parent, second: attempt}

@@ -120,3 +120,33 @@ test("a long rewritten text is described, not quoted half-way", () => {
   const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: long } })] });
   assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "k1 rewritten");
 });
+
+test("a fork made from one of another fork's runs leaves that fork's line, where the change was made", () => {
+  const withRuns = steps.map((s) => ({ ...s, run: "main" }));
+  const first = exp({
+    id: "e1", parent_run: "main", fork_node_run_idx: 2,
+    tiles: [{ arm: "treatment", i: 0, status: "done", run_id: "attempt-1", outcome: "fail" }],
+  });
+  const second = exp({ id: "e2", parent_run: "attempt-1", fork_node_run_idx: 4, created_at: "later" });
+  const g = buildGraph(withRuns, { experiments: [first, second] });
+  const spawn = g.edges.find((e) => e.id === "e2:spawn")!;
+  assert.equal(spawn.from, "e1:3"); // the writer on fork 1's own line, just before the critic
+  assert.equal(g.lanes.length, 3);
+  assert.equal(g.edges.find((e) => e.id === "e1:spawn")!.from, "a1"); // fork 1 still leaves the original run
+});
+
+test("a fork of a fork made at or before the first fork's change falls back to the original line", () => {
+  const withRuns = steps.map((s) => ({ ...s, run: "main" }));
+  const first = exp({ id: "e1", parent_run: "main", fork_node_run_idx: 3, tiles: [{ arm: "treatment", i: 0, status: "done", run_id: "a1", outcome: "fail" }] });
+  const second = exp({ id: "e2", parent_run: "a1", fork_node_run_idx: 3 });
+  assert.equal(buildGraph(withRuns, { experiments: [first, second] }).edges.find((e) => e.id === "e2:spawn")!.from, "a2");
+});
+
+test("a fork of a run we do not draw is left out, and a draft from a fork leaves that fork's line", () => {
+  const withRuns = steps.map((s) => ({ ...s, run: "main" }));
+  const stranger = exp({ id: "x", parent_run: "somewhere-else" });
+  assert.equal(buildGraph(withRuns, { experiments: [stranger] }).lanes.length, 1);
+  const first = exp({ id: "e1", parent_run: "main", fork_node_run_idx: 2, tiles: [] });
+  const g = buildGraph(withRuns, { experiments: [first], draft: { nodeRun: 4, fromExperiment: "e1" } });
+  assert.equal(g.edges.find((e) => e.id === "draft:spawn")!.from, "e1:3");
+});

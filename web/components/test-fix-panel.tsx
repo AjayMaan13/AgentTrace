@@ -15,8 +15,8 @@ const asText = (v: unknown) => JSON.stringify(v, null, 2);
 /** Change what one agent wrote, then run everything after it again, N times with your change
  * and N times without. Earlier steps replay exactly from the recording; later ones run live. */
 export function TestFixPanel({
-  run, request, onLaunched,
-}: { run: Run; request?: { nodeRunIdx: number; patch: State } | null; onLaunched: (experimentId: string) => void }) {
+  run, request, onLaunched, baseLabel,
+}: { run: Run; request?: { nodeRunIdx: number; patch: State } | null; onLaunched: (experimentId: string) => void; baseLabel?: string }) {
   const api = useApi();
   const forkable = useMemo(() => nodeRuns(run.steps).filter((r) => r.stateAfter && r.writes.length > 0), [run.steps]);
   const start = forkable.find((r) => r.idx === request?.nodeRunIdx) ?? forkable[0];
@@ -94,6 +94,12 @@ export function TestFixPanel({
           using what went into it as your guide. Then everything after it runs again, with your change and without it, and a new
           line opens on the graph above.
         </p>
+        {baseLabel && (
+          <p className="mt-2 max-w-prose rounded-lg border border-line bg-tile px-3 py-2">
+            This fork starts from one run of <b className="font-medium">{baseLabel}</b>, with that fork&apos;s change already applied. Everything
+            before the agent you pick is copied from that run.
+          </p>
+        )}
         <p className="mt-2 max-w-prose text-[0.8125rem] text-muted">
           You can change any value this agent wrote for the next agent. You cannot yet change its instructions and run the agent
           itself again, because that needs your workflow code.

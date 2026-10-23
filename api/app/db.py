@@ -436,6 +436,18 @@ async def list_experiments(workspace: str, limit: int = 200) -> list[dict[str, A
     return [_row(r) for r in rows]
 
 
+async def list_experiments_for_runs(workspace: str, run_ids: list[str]) -> list[dict[str, Any]]:
+    """Experiments started from any of these runs, oldest first."""
+    if not run_ids:
+        return []
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM experiment WHERE workspace = $ws AND parent_run IN $ids ORDER BY created_at ASC",
+            {"ws": workspace, "ids": run_ids},
+        )
+    return [_row(r) for r in rows]
+
+
 async def list_experiments_for_run(workspace: str, run_id: str) -> list[dict[str, Any]]:
     """Every experiment (fork) started from this run, oldest first: the branches of its graph."""
     async with connect() as c:

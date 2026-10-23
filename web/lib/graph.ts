@@ -39,7 +39,7 @@ export type Graph = { lanes: GLane[]; nodes: GNode[]; edges: GEdge[]; cols: numb
 const LIVE = "ran live in every run";
 
 export function buildGraph(
-  steps: Step[], opts: { marks?: Map<number, Mark>; experiments?: Experiment[]; outcome?: string; resultText?: string; draft?: { nodeRun: number } | null },
+  steps: Step[], opts: { marks?: Map<number, Mark>; experiments?: Experiment[]; outcome?: string; resultText?: string; draft?: { nodeRun: number; fromExperiment?: string | null } | null },
 ): Graph {
   const cards = agentCards(steps);
   const marks = opts.marks ?? new Map<number, Mark>();
@@ -62,9 +62,25 @@ export function buildGraph(
   });
   chain(edges, nodes.filter((n) => n.lane === 0), 0);
 
-  (opts.experiments ?? []).forEach((e, k) => {
+  // A fork can be made from one of another fork's own runs. Then its line leaves that fork's line.
+  const mainId = steps[0]?.run;
+  const owner = new Map<string, string>(); // run id -> the fork that made it
+  const laneOf = new Map<string, number>(); // fork id -> its lane
+  /** The node the new line leaves: the one just before the changed agent, on the line it was forked from. */
+  const sourceFor = (parentLane: number, forkAt: number): string => {
+    const onParent = parentLane > 0 ? nodes.find((n) => n.lane === parentLane && n.col === forkAt) : undefined;
+    if (onParent) return onParent.id;
+    return forkAt === 0 ? "start" : `a${cards[forkAt - 1].idx}`;
+  };
+  let drawn = 0;
+
+  (opts.experiments ?? []).forEach((e) => {
     const forkAt = cards.findIndex((c) => c.idx === e.fork_node_run_idx);
     if (forkAt < 0) return;
+    const parentExp = e.parent_run === mainId || mainId === undefined ? undefined : owner.get(e.parent_run);
+    if (e.parent_run !== mainId && mainId !== undefined && !parentExp) return; // made from a run we do not draw
+    const parentLane = parentExp ? laneOf.get(parentExp) ?? 0 : 0;
+    const k = drawn++;
     const lane = lanes.length;
     const agent = cards[forkAt].agent;
     const verdict = verdictFor(e.control, e.treatment, e.stats.fisher_p);
@@ -74,11 +90,11 @@ export function buildGraph(
 
     const change = describeEdit(steps, e.fork_node_run_idx, e.edit_patch);
     const branch: GNode[] = [
-      { id: `${e.id}:edit`, lane, col: forkAt + 1, kind: "edited", label: agent, sub: change.short ?? "with your change", tone: "neutral", experiment: e.id, change: change.lines },
+      { id: `${e.id}:edit`, lane, col: forkAt + 1, kind: "edited", label: agent, sub: change.short ?? "with your change", tone: "neutral", experiment: e.id, change: change.lines, nodeRun: e.fork_node_run_idx },
     ];
     cards.slice(forkAt + 1).forEach((c, j) => {
       branch.push({
-        id: `${e.id}:${c.idx}`, lane, col: forkAt + 2 + j, kind: "live", label: c.agent, sub: `${LIVE} (${e.n}×)`, tone: "neutral", experiment: e.id,
+        id: `${e.id}:${c.idx}`, lane, col: forkAt + 2 + j, kind: "live", label: c.agent, sub: `${LIVE} (${e.n}×)`, tone: "neutral", experiment: e.id, nodeRun: c.idx,
       });
     });
     branch.push({
@@ -89,8 +105,10 @@ export function buildGraph(
     });
     nodes.push(...branch);
     chain(edges, branch, lane);
-    // The new line leaves the original line just before the agent that was changed.
-    edges.push({ id: `${e.id}:spawn`, from: forkAt === 0 ? "start" : `a${cards[forkAt - 1].idx}`, to: branch[0].id, kind: "spawn", lane });
+    // The new line leaves the line it was forked from, just before the agent that was changed.
+    edges.push({ id: `${e.id}:spawn`, from: sourceFor(parentLane, forkAt), to: branch[0].id, kind: "spawn", lane });
+    laneOf.set(e.id, lane);
+    for (const t of e.tiles) if (t.arm === "treatment" && t.run_id) owner.set(t.run_id, e.id);
   });
 
   // A fork the person is setting up: the new line is there at once, drawn as not started.
@@ -105,7 +123,7 @@ export function buildGraph(
     ];
     nodes.push(...draft);
     chain(edges, draft, lane);
-    edges.push({ id: "draft:spawn", from: at === 0 ? "start" : `a${cards[at - 1].idx}`, to: "draft:edit", kind: "spawn", lane });
+    edges.push({ id: "draft:spawn", from: sourceFor(opts.draft.fromExperiment ? laneOf.get(opts.draft.fromExperiment) ?? 0 : 0, at), to: "draft:edit", kind: "spawn", lane });
   }
 
   return {

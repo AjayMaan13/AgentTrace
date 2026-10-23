@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BenchmarkTable } from "@/components/benchmark-table";
 import { Checks } from "@/components/checks";
 import { DeleteRun } from "@/components/delete-run";
@@ -12,6 +12,7 @@ import { NodePanel } from "@/components/node-panel";
 import { RcaPanel } from "@/components/rca-panel";
 import { RcaView } from "@/components/rca-view";
 import { TestFixPanel } from "@/components/test-fix-panel";
+import { useApi } from "@/lib/api";
 import { formatTime, formatTokens } from "@/lib/format";
 import { buildGraph } from "@/lib/graph";
 import { marksFromReport } from "@/lib/story";
@@ -55,17 +56,33 @@ function RunBody({
   const marks = useMemo(() => marksFromReport(known), [known]);
   const [selected, setSelected] = useState<string | null>(initialSelected);
   const [fix, setFix] = useState<{ nodeRunIdx: number; patch: State; nonce: number } | null>(null);
-  const [draft, setDraft] = useState<number | null>(null); // the agent a fork is being set up at: its line is drawn at once
+  // The fork being set up: which agent, and (when it is made inside another fork) which fork. Its line is drawn at once.
+  const [draft, setDraft] = useState<{ nodeRun: number; fromExperiment: string | null } | null>(null);
+  // When forking inside a fork, the fork starts from one real run of that fork, so the form needs that run.
+  const [base, setBase] = useState<{ experimentId: string; runId: string } | null>(null);
+  const [loaded, setLoaded] = useState<{ id: string; run: Run } | null>(null);
+  const baseRun = base && loaded?.id === base.runId ? loaded.run : null;
+  const [forkNote, setForkNote] = useState<string | null>(null);
+  const api = useApi();
+  useEffect(() => {
+    if (!base) return;
+    let off = false;
+    api<Run>(`/v1/runs/${base.runId}`)
+      .then((r) => !off && setLoaded({ id: base.runId, run: r }))
+      .catch(() => !off && setForkNote("Could not load that fork's run, so it cannot be forked from here."));
+    return () => { off = true; };
+  }, [base, api]);
 
   const failed = run.outcome === "fail" || run.outcome === "error";
   const got = run.oracle_detail?.footer?.open_tickets;
   const want = run.oracle_detail?.truth?.open_tickets;
   const resultText = got !== undefined && want !== undefined ? `${got} open tickets, not ${want}` : undefined;
   // Rebuilt from the current data, so a fork that finishes updates the node you are looking at.
-  const node = useMemo(
-    () => (selected ? buildGraph(run.steps, { marks, experiments, outcome: run.outcome, resultText, draft: draft === null ? null : { nodeRun: draft } }).nodes.find((n) => n.id === selected) ?? null : null),
-    [selected, run.steps, run.outcome, marks, experiments, resultText, draft],
+  const graph = useMemo(
+    () => buildGraph(run.steps, { marks, experiments, outcome: run.outcome, resultText, draft }),
+    [run.steps, run.outcome, marks, experiments, resultText, draft],
   );
+  const node = selected ? graph.nodes.find((n) => n.id === selected) ?? null : null;
 
   function scrollToForm() {
     setTimeout(() => {
@@ -75,8 +92,24 @@ function RunBody({
     }, 50);
   }
   function startFork(nodeRunIdx: number, patch: State = {}) {
-    setDraft(nodeRunIdx);
+    setBase(null);
+    setForkNote(null);
+    setDraft({ nodeRun: nodeRunIdx, fromExperiment: null });
     setFix((prev) => ({ nodeRunIdx, patch, nonce: (prev?.nonce ?? 0) + 1 }));
+    scrollToForm();
+  }
+  /** Fork inside a fork: start from one finished run of that fork (its change already applied). */
+  function startForkInside(experimentId: string, nodeRunIdx: number) {
+    const exp = experiments.find((e) => e.id === experimentId);
+    const runId = exp?.tiles.find((t) => t.arm === "treatment" && t.run_id)?.run_id;
+    if (!runId) {
+      setForkNote("That fork has no finished run yet, so there is nothing to fork from. Wait for a run to finish, then try again.");
+      return;
+    }
+    setForkNote(null);
+    setBase({ experimentId, runId });
+    setDraft({ nodeRun: nodeRunIdx, fromExperiment: experimentId });
+    setFix((prev) => ({ nodeRunIdx, patch: {}, nonce: (prev?.nonce ?? 0) + 1 }));
     scrollToForm();
   }
   function testCandidate(c: Candidate) {
@@ -108,8 +141,9 @@ function RunBody({
         <FlowGraph
           steps={run.steps} marks={marks} experiments={experiments} outcome={run.outcome} resultText={resultText}
           selected={selected} onSelect={(n) => setSelected((s) => (s === n.id ? null : n.id))}
-          draft={draft === null ? null : { nodeRun: draft }}
+          draft={draft}
         />
+        {forkNote && <p role="alert" className="rounded-lg border border-bad/30 bg-bad-tint px-3 py-2 text-bad">{forkNote}</p>}
         {forksError && (
           <p role="alert" className="rounded-lg border border-bad/30 bg-bad-tint px-3 py-2 text-bad">
             Could not load this run&apos;s forks ({forksError}). A fork you start will still run, but it will not show here until this loads. If you just updated the app, restart the API.
@@ -129,7 +163,7 @@ function RunBody({
           node={node} run={run} report={known} experiments={experiments} mode={mode}
           runHref={(id) => (mode === "demo" ? `/demo/runs/${id}` : `/runs/${id}`)}
           experimentHref={(id) => (mode === "demo" ? null : `/experiments/${id}`)}
-          onFork={(n) => (n === 0 ? scrollToForm() : startFork(n))} canFork={canFork}
+          onFork={(n) => (n === 0 ? scrollToForm() : startFork(n))} onForkBranch={startForkInside} canFork={canFork}
         />
       </section>
 
@@ -144,15 +178,21 @@ function RunBody({
       ) : mode === "app" ? (
         <>
           <RcaPanel run={run} onTest={testCandidate} onReport={setSaved} />
+          {base && !baseRun ? (
+            <p id="test-fix" tabIndex={-1} className="card p-5 text-muted">Loading that fork&apos;s run…</p>
+          ) : (
           <TestFixPanel
-            key={`${run.id}-${fix?.nonce ?? 0}`} run={run} request={fix}
+            key={`${base?.runId ?? run.id}-${fix?.nonce ?? 0}`} run={base && baseRun ? baseRun : run} request={fix}
+            baseLabel={base ? graph.lanes.find((l) => l.experiment === base.experimentId)?.label.split(":")[0] : undefined}
             onLaunched={(id) => {
               onForked?.(id);
               setDraft(null);
+              setBase(null);
               setSelected(`${id}:end`);
               document.getElementById("run-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           />
+          )}
         </>
       ) : (
         <>
