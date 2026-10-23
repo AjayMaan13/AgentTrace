@@ -1,4 +1,4 @@
-import { OriginBadge } from "@/components/badges";
+import { ORIGINS, OriginBadge } from "@/components/badges";
 import { JsonBlock } from "@/components/json-block";
 import { diffState } from "@/lib/diff";
 import { formatTokens } from "@/lib/format";
@@ -24,33 +24,32 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
   const input = step.input as { system?: unknown; messages?: unknown; tools?: unknown } | null;
 
   return (
-    <section aria-label="Step inspector" className="flex flex-col gap-4 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
+    <section aria-label="Step inspector" className="flex flex-col gap-5 rounded-xl border border-white/10 bg-white/[0.02] p-5">
       <header className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold">
-          Step {step.idx} · {step.agent}
-        </h2>
-        <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-          {step.kind === "tool" ? `tool ${step.tool_name ?? ""}` : "llm"}
-        </span>
+        <h3 className="text-lg font-semibold capitalize">
+          {step.agent}: {step.kind === "tool" ? `tool call to ${step.tool_name ?? "a tool"}` : "model call"}
+        </h3>
         <OriginBadge origin={step.origin} />
       </header>
+      <p className="-mt-3 text-xs text-zinc-500">
+        This step is {step.origin === "live" ? "re-run live and sampled" : `${step.origin}: ${ORIGINS[step.origin].meaning}`}.
+      </p>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
-        <Fact label="Node run" value={String(step.node_run_idx)} />
-        <Fact label="Model" value={step.model ?? "n/a"} />
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+        <Fact label="Model" value={step.model ?? "none (tool)"} />
         <Fact label="Tokens in / out" value={`${formatTokens(step.tokens_in)} / ${formatTokens(step.tokens_out)}`} />
         <Fact label="Latency" value={`${step.latency_ms} ms`} />
       </dl>
 
       <div>
-        <h3 className="mb-1 text-sm font-semibold">State change in node run {step.node_run_idx}</h3>
+        <h4 className="mb-1 text-sm font-semibold">What this agent changed</h4>
         {step.state_after === null && lastIdx !== undefined && (
           <p className="mb-1 text-xs text-zinc-600 dark:text-zinc-400">
-            State is saved on the last step of a node run (step {lastIdx}); this is the change it made.
+            The change is saved on this agent&apos;s last step (step {lastIdx}); this is what the agent changed overall.
           </p>
         )}
         {changes.length === 0 ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">No state change recorded.</p>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">It did not change anything.</p>
         ) : (
           <ul className="divide-y divide-zinc-200 rounded-md border border-zinc-300 font-mono text-xs dark:divide-zinc-800 dark:border-zinc-700">
             {changes.map((c) => (
@@ -60,8 +59,8 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
                   <span className="sr-only">{c.kind}: </span>
                   {c.path}
                 </span>
-                {c.kind !== "added" && <span className="break-all text-red-800 dark:text-red-300">was {show(c.before)}</span>}
-                {c.kind !== "removed" && <span className="break-all text-green-800 dark:text-green-300">now {show(c.after)}</span>}
+                {c.kind !== "added" && <span className="break-all text-rose-300">was {show(c.before)}</span>}
+                {c.kind !== "removed" && <span className="break-all text-emerald-300">now {show(c.after)}</span>}
               </li>
             ))}
           </ul>
@@ -70,21 +69,21 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
 
       {step.kind === "llm" ? (
         <>
-          {typeof input?.system === "string" && <JsonBlock label="System prompt" value={input.system} />}
-          {input?.messages !== undefined && <JsonBlock label="Messages" value={input.messages} />}
-          <JsonBlock label="Output" value={step.output} />
+          {typeof input?.system === "string" && <JsonBlock label="Instructions it was given" value={input.system} />}
+          {input?.messages !== undefined && <JsonBlock label="What it was asked" value={input.messages} />}
+          <JsonBlock label="What it said" value={step.output} />
         </>
       ) : (
         <>
-          <JsonBlock label="Tool arguments" value={step.tool_args} />
-          <JsonBlock label={`Tool result${step.side_effect ? " (has side effects)" : " (read-only)"}`} value={step.tool_result} />
+          <JsonBlock label="What it asked for" value={step.tool_args} />
+          <JsonBlock label={`What came back${step.side_effect ? " (this tool has side effects)" : " (read-only tool)"}`} value={step.tool_result} />
         </>
       )}
       {step.origin === "edited" && <JsonBlock label="Your edit" value={step.output} />}
 
       <p className="text-xs text-zinc-600 dark:text-zinc-400">
-        Reads: {step.reads.join(", ") || "none"} · Writes: {step.writes.join(", ") || "none"}
-        {step.redactions.length > 0 && ` · ${step.redactions.length} value(s) redacted before storage`}
+        Read from the shared state: {step.reads.join(", ") || "nothing"} · Wrote: {step.writes.join(", ") || "nothing"}
+        {step.redactions.length > 0 && ` · ${step.redactions.length} secret value(s) were removed before storage`}
       </p>
     </section>
   );

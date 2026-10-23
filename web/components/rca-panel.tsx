@@ -6,7 +6,9 @@ import { ApiError, useApi } from "@/lib/api";
 import type { Candidate, RcaReport, Run } from "@/lib/types";
 import { useApiData } from "@/lib/use-api-data";
 
-export function RcaPanel({ run, onTest }: { run: Run; onTest: (candidate: Candidate) => void }) {
+export function RcaPanel({
+  run, onTest, onReport,
+}: { run: Run; onTest: (candidate: Candidate) => void; onReport?: (report: RcaReport | null) => void }) {
   const api = useApi();
   const stored = useApiData<RcaReport>(`/v1/runs/${run.id}/rca`); // 404 just means "not run yet"
   const [fresh, setFresh] = useState<RcaReport | null>(null);
@@ -18,6 +20,11 @@ export function RcaPanel({ run, onTest }: { run: Run; onTest: (candidate: Candid
   const report = fresh ?? (stored.status === "ok" ? stored.data : null);
   const storedProblem =
     stored.status === "error" && stored.code !== 404 ? `Could not load the saved analysis: ${stored.message}` : null;
+
+  // Tell the page what the report says, so the agent cards can mark the likely cause.
+  useEffect(() => {
+    onReport?.(report);
+  }, [report, onReport]);
 
   // While verification runs in the background, re-read the report until it finishes.
   const verifying = report?.verification?.status === "running";

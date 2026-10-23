@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Candidate, RcaReport, VerificationItem } from "@/lib/types";
 
-/** Root-cause candidates, ranked. The agent proposes; experiments decide. */
+/** "Why it probably failed": the most likely cause first, the other suspects folded away.
+ * The agent proposes; experiments decide. */
 export function RcaView({
   report, agentOf, canRun, busy, error, onFind, onTest, readOnly = false,
   experimentHref = () => null, onVerify, verifyBusy = false,
@@ -22,177 +23,216 @@ export function RcaView({
   const running = verification?.status === "running";
   const order = verification?.ranking ?? report?.candidates.map((_, i) => i) ?? [];
   const canVerify = !!report && report.candidates.some((c) => c.proposed_edit);
+  const [first, ...rest] = order;
+
   return (
-    <section aria-label="Root cause" className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
-      <h2 className="text-lg font-semibold">Root cause</h2>
-      <p className="text-sm text-zinc-400">
-        An AI agent follows the data back from the wrong answer and ranks suspects.{" "}
-        {readOnly ? "Experiments decide." : <>Use <b>Test this</b> to run an experiment.</>}
-      </p>
+    <section aria-label="Why it probably failed" className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Why it probably failed</h2>
+        <p className="mt-1 max-w-prose text-zinc-400">
+          An AI reads the run and follows the wrong answer back to the step that caused it.
+        </p>
+      </div>
 
-      {!readOnly && <button
-        type="button"
-        onClick={onFind}
-        disabled={!canRun || busy}
-        className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
-      >
-        {busy ? "Analysing the trace…" : report ? "Analyse again" : "Find root cause"}
-      </button>}
-      {!readOnly && !canRun && (
-        <p className="text-xs text-zinc-600 dark:text-zinc-400">Root-cause analysis is for runs that failed the oracle.</p>
+      {!readOnly && !report && (
+        <div className="flex flex-col items-start gap-2">
+          <button
+            type="button"
+            onClick={onFind}
+            disabled={!canRun || busy}
+            className="accent-bg rounded-lg px-5 py-2.5 font-semibold hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? "Reading the run…" : "Find the cause"}
+          </button>
+          {!canRun && <p className="text-sm text-zinc-400">This only works on runs that failed their check.</p>}
+        </div>
       )}
-      <p role="alert" className="min-h-4 text-sm text-red-800 dark:text-red-300">
-        {error}
-      </p>
+      {error && (
+        <p role="alert" className="text-sm text-rose-300">
+          {error}
+        </p>
+      )}
 
-      {report && (
+      {report && first !== undefined && (
         <>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400">
-            Data path to the wrong answer: {report.lineage.map((i) => `${agentOf(i)} (node run ${i})`).join(" → ")} ·{" "}
-            {report.model}
+          <p className="text-sm text-zinc-400">
+            Path of the mistake: {report.lineage.map((i) => agentOf(i)).join(" → ")}
           </p>
+
+          {verification?.status === "done" && (
+            <p className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-medium">
+              {report.verdict_idx !== null
+                ? `Confirmed by experiment: the ${agentOf(report.candidates[report.verdict_idx].node_run_idx)} caused it.`
+                : "No suspect passed its experiment, so none is confirmed. The ranking below is still the AI's opinion."}
+            </p>
+          )}
+          {verification?.status === "error" && (
+            <p role="alert" className="text-sm text-rose-300">Checking by experiment failed ({verification.error ?? "unknown error"}).</p>
+          )}
+
+          <Suspect
+            candidate={report.candidates[first]}
+            rank={1}
+            report={report}
+            ci={first}
+            agentOf={agentOf}
+            item={verification?.items.find((it) => it.candidate_idx === first)}
+            verification={verification}
+            running={running}
+            readOnly={readOnly}
+            onTest={onTest}
+            experimentHref={experimentHref}
+            lead
+          />
+
+          {rest.length > 0 && (
+            <details className="rounded-xl border border-white/10 p-4">
+              <summary className="cursor-pointer text-sm font-medium">Other suspects ({rest.length})</summary>
+              <div className="mt-4 flex flex-col gap-4">
+                {rest.map((ci, i) => (
+                  <Suspect
+                    key={ci}
+                    candidate={report.candidates[ci]}
+                    rank={i + 2}
+                    report={report}
+                    ci={ci}
+                    agentOf={agentOf}
+                    item={verification?.items.find((it) => it.candidate_idx === ci)}
+                    verification={verification}
+                    running={running}
+                    readOnly={readOnly}
+                    onTest={onTest}
+                    experimentHref={experimentHref}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+
           {!readOnly && onVerify && (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col items-start gap-1">
               <button
                 type="button"
                 onClick={onVerify}
                 disabled={!canVerify || running || verifyBusy}
-                className="self-start rounded-md border-2 border-zinc-900 px-3 py-1.5 text-sm font-semibold hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-100 dark:hover:bg-zinc-900"
+                className="rounded-lg border border-white/25 px-4 py-2 text-sm font-semibold hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {running || verifyBusy ? "Testing the top candidates…" : verification ? "Verify again" : "Verify the top 2 by experiment"}
+                {running || verifyBusy ? "Testing the top suspects…" : verification ? "Check again" : "Check the top suspects by experiment"}
               </button>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                Runs up to 2 experiments (control vs treatment, 3 live runs each) and re-ranks the candidates by what was
-                measured, not by the agent&apos;s confidence.
-              </p>
+              <p className="text-xs text-zinc-500">Runs each suspect&apos;s fix a few times and ranks them by what actually happened.</p>
             </div>
           )}
-          {verification?.status === "done" && (
-            <p className="rounded-md border border-zinc-300 p-2 text-sm font-medium dark:border-zinc-700">
-              {report.verdict_idx !== null
-                ? `Verified by experiment: the ${agentOf(report.candidates[report.verdict_idx].node_run_idx)} step.`
-                : "No candidate beat its control, so none is verified. The ranking below is still the agent's opinion."}
-            </p>
+          {!readOnly && (
+            <button type="button" onClick={onFind} disabled={!canRun || busy} className="self-start text-sm text-zinc-400 underline underline-offset-4 hover:text-white disabled:opacity-40">
+              {busy ? "Reading the run…" : "Ask the AI again"}
+            </button>
           )}
-          {verification?.status === "error" && (
-            <p role="alert" className="text-sm text-red-800 dark:text-red-300">Verification failed ({verification.error ?? "unknown error"}).</p>
-          )}
-          <ol className="flex flex-col gap-3">
-            {order.map((ci, i) => {
-              const c = report.candidates[ci];
-              const item = verification?.items.find((it) => it.candidate_idx === ci);
-              return (
-              <li key={`${c.node_run_idx}-${c.step_idx}`} className="rounded-md border border-zinc-300 p-3 dark:border-zinc-700">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-zinc-900 px-2 py-0.5 text-xs font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">
-                    #{i + 1}
-                  </span>
-                  <span className="text-sm font-semibold">
-                    {agentOf(c.node_run_idx)} · node run {c.node_run_idx} · step {c.step_idx}
-                  </span>
-                  {report.verdict_idx === ci && (
-                    <span className="rounded-full bg-green-700 px-2 py-0.5 text-xs font-semibold text-white">Verified cause</span>
-                  )}
-                  <span className="ml-auto text-sm tabular-nums">{Math.round(c.confidence * 100)}% confidence</span>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded bg-zinc-200 dark:bg-zinc-800" aria-hidden>
-                  <div className="h-full bg-zinc-900 dark:bg-zinc-100" style={{ width: `${c.confidence * 100}%` }} />
-                </div>
-                {c.matches_past_pattern && (
-                  <SeenBefore
-                    experimentId={c.matches_past_pattern}
-                    text={report.recalled.find((r) => r.experiment === c.matches_past_pattern)?.text}
-                    href={experimentHref(c.matches_past_pattern)}
-                  />
-                )}
-                <p className="mt-2 text-sm">{c.hypothesis}</p>
-                {verification && (
-                  <Measurement item={item} running={running} href={item?.experiment_id ? experimentHref(item.experiment_id) : null} n={verification.n} />
-                )}
-                {c.evidence_quotes.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-                      Evidence (verbatim from the trace)
-                    </p>
-                    <ul className="mt-1 flex flex-col gap-1">
-                      {c.evidence_quotes.map((q) => (
-                        <li key={q} className="break-words border-l-2 border-zinc-400 pl-2 font-mono text-xs">
-                          {q}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {readOnly ? (
-                  c.proposed_edit && (
-                    <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
-                      Proposed edit: change {Object.keys(c.proposed_edit.patch).join(", ")}
-                    </p>
-                  )
-                ) : c.proposed_edit ? (
-                  <button
-                    type="button"
-                    onClick={() => onTest(c)}
-                    className="mt-3 rounded-md border-2 border-zinc-900 px-3 py-1.5 text-sm font-semibold hover:bg-zinc-100 dark:border-zinc-100 dark:hover:bg-zinc-900"
-                  >
-                    Test this: edit {Object.keys(c.proposed_edit.patch).join(", ")}
-                  </button>
-                ) : (
-                  <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
-                    No concrete edit proposed for this candidate.
-                  </p>
-                )}
-              </li>
-              );
-            })}
-          </ol>
         </>
       )}
     </section>
   );
 }
 
-/** The candidate matches a root cause that an earlier experiment in this workspace verified. */
+function Suspect({
+  candidate: c, rank, report, ci, agentOf, item, verification, running, readOnly, onTest, experimentHref, lead = false,
+}: {
+  candidate: Candidate;
+  rank: number;
+  report: RcaReport;
+  ci: number;
+  agentOf: (i: number) => string;
+  item?: VerificationItem;
+  verification: RcaReport["verification"];
+  running: boolean;
+  readOnly: boolean;
+  onTest: (c: Candidate) => void;
+  experimentHref: (id: string) => string | null;
+  lead?: boolean;
+}) {
+  const confirmed = report.verdict_idx === ci;
+  return (
+    <article className={`rounded-xl border p-5 ${lead ? "border-rose-400/60 bg-rose-500/[0.05]" : "border-white/10"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className={`font-semibold ${lead ? "text-xl" : "text-base"}`}>
+          {lead ? "Most likely: " : `#${rank} `}
+          <span className="capitalize">{agentOf(c.node_run_idx)}</span>
+        </h3>
+        {confirmed && <span className="rounded-full bg-emerald-400 px-2 py-0.5 text-xs font-semibold text-zinc-950">Confirmed</span>}
+        <span className="ml-auto text-sm tabular-nums text-zinc-400">{Math.round(c.confidence * 100)}% sure</span>
+      </div>
+      {c.matches_past_pattern && (
+        <SeenBefore
+          experimentId={c.matches_past_pattern}
+          text={report.recalled.find((r) => r.experiment === c.matches_past_pattern)?.text}
+          href={experimentHref(c.matches_past_pattern)}
+        />
+      )}
+      <p className="mt-3 max-w-prose">{c.hypothesis}</p>
+      {verification && (
+        <Measurement item={item} running={running} href={item?.experiment_id ? experimentHref(item.experiment_id) : null} n={verification.n} />
+      )}
+      {c.evidence_quotes.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm text-zinc-400">Evidence from the run</summary>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {c.evidence_quotes.map((q) => (
+              <li key={q} className="break-words border-l-2 border-white/25 pl-3 font-mono text-xs text-zinc-300">
+                {q}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {!readOnly && c.proposed_edit && (
+        <button
+          type="button"
+          onClick={() => onTest(c)}
+          className="accent-bg mt-4 rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90"
+        >
+          Test this fix
+        </button>
+      )}
+      {!readOnly && !c.proposed_edit && <p className="mt-3 text-xs text-zinc-500">No concrete fix proposed for this one.</p>}
+    </article>
+  );
+}
+
+/** The candidate matches a root cause that an earlier experiment in this workspace confirmed. */
 function SeenBefore({ experimentId, text, href }: { experimentId: string; text?: string; href: string | null }) {
   const chip = (
-    <span className="inline-flex items-center gap-1 rounded-full border border-violet-600 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:border-violet-400 dark:text-violet-200">
-      <span aria-hidden>↺</span> Seen before
+    <span className="inline-flex items-center gap-1 rounded-full border border-violet-300/60 px-2 py-0.5 text-xs font-medium text-violet-200">
+      <span aria-hidden>↺</span> Seen before in this workspace
     </span>
   );
   return (
     <div className="mt-2 flex flex-col gap-1">
       {href ? (
-        <Link href={href} aria-label={`Seen before: open the experiment ${experimentId.slice(0, 8)} that verified it`} className="self-start hover:opacity-80">
+        <Link href={href} aria-label={`Seen before: open experiment ${experimentId.slice(0, 8)}`} className="self-start hover:opacity-80">
           {chip}
         </Link>
       ) : (
         <span className="self-start">{chip}</span>
       )}
-      {text && (
-        <p className="text-xs text-zinc-600 dark:text-zinc-400">
-          An earlier experiment in this workspace verified a similar root cause: {text}
-        </p>
-      )}
+      {text && <p className="max-w-prose text-xs text-zinc-500">{text}</p>}
     </div>
   );
 }
 
-/** What the experiment for one candidate measured. */
+/** What the experiment for one suspect measured. */
 function Measurement({ item, running, href, n }: { item?: VerificationItem; running: boolean; href: string | null; n: number }) {
-  const box = "mt-2 rounded border border-zinc-300 px-2 py-1.5 text-xs dark:border-zinc-700";
-  if (!item) return <p className={box}>Not tested: no concrete edit to try.</p>;
-  if (item.error) return <p className={box}>Could not be tested: {item.error}</p>;
+  const box = "mt-3 rounded-lg border border-white/10 px-3 py-2 text-sm";
+  if (!item) return <p className={`${box} text-zinc-400`}>Not tested: no concrete fix to try.</p>;
+  if (item.error) return <p className={`${box} text-zinc-400`}>Could not be tested: {item.error}</p>;
   if (running || !item.control || !item.treatment) {
-    return <p className={`${box} animate-pulse`}>Testing: control vs treatment, {n} live runs each…</p>;
+    return <p className={`${box} animate-pulse text-zinc-400`}>Testing: {n} runs without the fix, {n} with it…</p>;
   }
-  const points = item.delta === null || item.delta === undefined ? "n/a" : `${item.delta >= 0 ? "+" : ""}${Math.round(item.delta * 100)} pts`;
   return (
     <p className={box}>
-      <b>Measured</b> (N={n}): control {item.control.pass}/{item.control.total} → treatment {item.treatment.pass}/{item.treatment.total},
-      change {points}. {item.verified ? "Verified: the edit helped." : "Not verified: the edit did not help enough."}{" "}
+      <b>Tested</b>: without the fix {item.control.pass}/{item.control.total}, with it {item.treatment.pass}/{item.treatment.total}.{" "}
+      {item.verified ? "The fix helped." : "The fix did not help enough."}{" "}
       {href && (
         <Link href={href} className="font-semibold underline underline-offset-2">
-          Open experiment
+          See the experiment
         </Link>
       )}
     </p>

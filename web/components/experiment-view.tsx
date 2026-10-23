@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BenchmarkTable } from "@/components/benchmark-table";
 import { JsonBlock } from "@/components/json-block";
 import { formatP, formatTokens, percent, shortId } from "@/lib/format";
+import { verdictFor } from "@/lib/verdict";
 import type { Experiment, Tile } from "@/lib/types";
 
 export const isFinished = (e: Experiment) => !["queued", "running"].includes(e.status);
@@ -20,25 +21,25 @@ export function ExperimentView({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <Heading className="text-2xl font-semibold tracking-tight">{title ?? `Experiment ${shortId(e.id)}`}</Heading>
+        <Heading className="text-2xl font-semibold tracking-tight">{title ?? "Test result"}</Heading>
         {blurb && <p className="text-zinc-400">{blurb}</p>}
         <p className="text-sm text-zinc-700 dark:text-zinc-300">
-          Forked from{" "}
+          Started from{" "}
           <Link href={runHref(e.parent_run)} className="font-mono underline underline-offset-4">
             run {shortId(e.parent_run)}
-          </Link>{" "}
-          at node run {e.fork_node_run_idx} · {e.n} runs per arm
+          </Link>
+          , changing agent step {e.fork_node_run_idx}. {e.n} runs without the change, {e.n} with it.
         </p>
       </header>
 
       <ResultCard experiment={e} finished={finished} />
 
       <section aria-label="Runs">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">Runs</h2>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">Every run</h2>
         <div className="flex flex-col gap-3">
           {(["control", "treatment"] as const).map((arm) => (
             <div key={arm} className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <span className="w-24 shrink-0 text-sm font-medium capitalize">{arm}</span>
+              <span className="w-40 shrink-0 text-sm font-medium">{arm === "control" ? "Without the change" : "With the change"}</span>
               <ul className="flex flex-wrap gap-2">
                 {e.tiles.filter((t) => t.arm === arm).map((t) => (
                   <li key={`${t.arm}-${t.i}`}>
@@ -50,16 +51,16 @@ export function ExperimentView({
           ))}
         </div>
         <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
-          Green passed · red failed · orange errored. Select a tile to open its run.
+          Green: right answer. Red: wrong answer. Orange: crashed. Select a square to open that run.
         </p>
       </section>
 
       {e.benchmark && <BenchmarkTable benchmark={e.benchmark} />}
 
       <details className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
-        <summary className="cursor-pointer text-sm font-medium">The edit applied to the treatment arm</summary>
+        <summary className="cursor-pointer text-sm font-medium">What was changed</summary>
         <div className="mt-3">
-          <JsonBlock label="Edit (top-level state keys)" value={e.edit_patch} />
+          <JsonBlock label="The new value the agent was given" value={e.edit_patch} />
         </div>
       </details>
     </div>
@@ -69,22 +70,32 @@ export function ExperimentView({
 function ResultCard({ experiment: e, finished }: { experiment: Experiment; finished: number }) {
   const running = !isFinished(e);
   const { control: c, treatment: t, stats } = e;
+  const verdict = running ? null : verdictFor(c, t, stats.fisher_p);
   return (
     <section
       aria-live="polite"
       aria-label="Result"
-      className="rounded-xl border-2 border-zinc-900 p-5 sm:p-8 dark:border-zinc-100"
+      className="glow rounded-2xl border border-white/15 bg-white/[0.03] p-5 sm:p-8"
     >
-      <p className="text-sm uppercase tracking-wide text-zinc-700 dark:text-zinc-300">Success rate by arm</p>
-      <p className="mt-2 text-3xl font-bold tabular-nums sm:text-5xl lg:text-6xl">
-        Control {c.pass}/{c.total}
-        <span aria-hidden> → </span>
-        <span className="sr-only"> then </span>
-        Treatment {t.pass}/{t.total}
-      </p>
+      {verdict && (
+        <p className={`text-2xl font-semibold sm:text-3xl ${verdict.tone === "good" ? "text-emerald-300" : verdict.tone === "bad" ? "text-rose-300" : ""}`}>
+          {verdict.text}
+        </p>
+      )}
+      <p className="mt-4 text-sm uppercase tracking-wide text-zinc-400">How often the answer came out right</p>
+      <div className="mt-2 grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-sm text-zinc-400">Without the change</p>
+          <p className="text-4xl font-bold tabular-nums sm:text-6xl">{c.pass}/{c.total}</p>
+        </div>
+        <div>
+          <p className="text-sm text-zinc-400">With the change</p>
+          <p className="text-4xl font-bold tabular-nums sm:text-6xl">{t.pass}/{t.total}</p>
+        </div>
+      </div>
       <p className="mt-3 text-base sm:text-lg">
         {stats.fisher_p === null ? (
-          "Fisher p-value appears once both arms have finished a run"
+          "The p-value appears once both sides have finished a run"
         ) : (
           <>
             Fisher exact p {stats.fisher_p < 0.001 ? "" : "≈ "}
@@ -94,7 +105,7 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
       </p>
       {stats.wilson.control && stats.wilson.treatment && (
         <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-          95% intervals: control {percent(stats.wilson.control[0])}–{percent(stats.wilson.control[1])}, treatment{" "}
+          95% intervals: without {percent(stats.wilson.control[0])}–{percent(stats.wilson.control[1])}, with{" "}
           {percent(stats.wilson.treatment[0])}–{percent(stats.wilson.treatment[1])}. Small N shows direction, not proof.
         </p>
       )}
