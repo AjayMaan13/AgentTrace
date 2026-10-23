@@ -36,7 +36,7 @@ reports success rates (e.g. 0/5 -> 4/5). A root-cause (RCA) agent ranks suspect 
   say so and write a tiny probe script instead of guessing.
 
 ## Repo notes
-- Source of truth for scope and phases: `readme.md` (project map) and `AgentTrace-Build-Guide.md`.
+- Source of truth for scope and phases: `docs/project-map.md` (project map; `README.md` is the public readme) and `AgentTrace-Build-Guide.md`.
 - One `.env` at the repo root (gitignored). `.env.example` lists names only. api loads it with
   python-dotenv, web with `@next/env` (see `web/next.config.ts`). Real env vars win over the file.
 - api dev: `cd api && python3.11 -m venv .venv && .venv/bin/pip install -e ../sdk -e '.[dev]' && .venv/bin/pytest`
