@@ -1,6 +1,6 @@
 """Browser -> API reads. Scoped to the caller's workspace; another workspace's run is a 404."""
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -16,9 +16,11 @@ router = APIRouter(prefix="/v1")
 
 @router.get("/runs")
 async def list_runs(
-    limit: int = Query(default=50, ge=1, le=200), workspace: str = Depends(read_workspace)
+    limit: int = Query(default=50, ge=1, le=200),
+    kind: Literal["recorded", "fork"] | None = Query(default=None, description="recorded leaves out fork attempts"),
+    workspace: str = Depends(read_workspace),
 ) -> list[dict[str, Any]]:
-    return await db.list_runs(workspace, limit)
+    return await db.list_runs(workspace, limit, kind)
 
 
 @router.get("/runs/{run_id}")

@@ -83,3 +83,16 @@ test("an edit that changes nothing falls back to plain words", () => {
   const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: 1 } })] });
   assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "with your change");
 });
+
+test("setting up a fork opens a dashed line at once, before anything runs", () => {
+  const g = buildGraph(steps, { draft: { nodeRun: 2 } });
+  assert.equal(g.lanes.length, 2);
+  assert.equal(g.lanes[1].label, "New fork, not started");
+  assert.deepEqual(g.nodes.filter((n) => n.lane === 1).map((n) => n.label), ["researcher", "writer", "critic", "Not run yet"]);
+  assert.ok(g.nodes.filter((n) => n.lane === 1).every((n) => n.draft));
+  assert.equal(g.edges.find((e) => e.id === "draft:spawn")!.from, "a1");
+});
+
+test("a draft for an agent that is not in the run is ignored", () => {
+  assert.equal(buildGraph(steps, { draft: { nodeRun: 99 } }).lanes.length, 1);
+});

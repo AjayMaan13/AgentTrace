@@ -9,8 +9,10 @@ import type { Experiment, RunSummary } from "@/lib/types";
 import { useApiData } from "@/lib/use-api-data";
 
 export function RunsList() {
-  const state = useApiData<RunSummary[]>("/v1/runs");
-  const forks = useApiData<Experiment[]>("/v1/experiments", (list) => (list.some((e) => ["queued", "running"].includes(e.status)) ? 2000 : null));
+  // Recorded runs only: every fork also records a run per attempt, and they would bury the real ones.
+  // Both lists refresh on their own, so a run recorded or a fork started elsewhere shows up here.
+  const state = useApiData<RunSummary[]>("/v1/runs?kind=recorded&limit=200", () => 5000);
+  const forks = useApiData<Experiment[]>("/v1/experiments", (list) => (list.some((e) => ["queued", "running"].includes(e.status)) ? 2000 : 5000));
 
   return (
     <LoadState state={state}>
@@ -46,8 +48,7 @@ export function RunsList() {
                       <span className="text-muted">
                         {run.outcome === "fail" ? "Gave a wrong answer" : run.outcome === "pass" ? "Gave the right answer" : "Did not finish"}
                       </span>
-                      {run.kind === "fork" && <span className="rounded-full border border-line px-2 text-[0.8125rem] text-muted">fork attempt</span>}
-                      <span className="ml-auto text-[0.8125rem] text-muted">
+                                            <span className="ml-auto text-[0.8125rem] text-muted">
                         {formatTime(run.started_at)}
                         {run.tokens_in !== undefined && ` · ${formatTokens((run.tokens_in ?? 0) + (run.tokens_out ?? 0))} tokens`}
                       </span>

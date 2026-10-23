@@ -2,7 +2,14 @@ import Link from "next/link";
 import { OrganizationSwitcher, Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { Suspense } from "react";
 import { Brand } from "@/components/brand";
-import { NavLinks } from "@/components/nav-links";
+import { type NavGroup, NavLinks } from "@/components/nav-links";
+
+const SIGNED_IN: NavGroup[] = [
+  { label: "Your project", items: [{ href: "/runs", label: "Runs" }, { href: "/forks", label: "Forks" }, { href: "/activity", label: "Activity" }] },
+  { label: "Set up", items: [{ href: "/connect", label: "Connect your agents" }] },
+  { label: "Learn", items: [{ href: "/demo", label: "Saved example" }] },
+];
+const SIGNED_OUT: NavGroup[] = [{ label: "Learn", items: [{ href: "/demo", label: "Saved example" }] }];
 
 /** The app frame, as in the Claude Console: a quiet sidebar with the product, the workspace and the
  * pages, and the work on the right. On a phone the sidebar becomes a bar across the top. */
@@ -33,10 +40,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </Show>
             <nav aria-label="Main">
               <Show when="signed-in">
-                <NavLinks items={[{ href: "/runs", label: "Runs" }, { href: "/connect", label: "Connect your agents" }, { href: "/demo", label: "Saved example" }]} />
+                <NavLinks groups={SIGNED_IN} />
               </Show>
               <Show when="signed-out">
-                <NavLinks items={[{ href: "/demo", label: "Saved example" }]} />
+                <NavLinks groups={SIGNED_OUT} />
               </Show>
             </nav>
           </div>

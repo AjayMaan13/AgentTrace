@@ -11,8 +11,9 @@ const TONE_TEXT: Record<Tone, string> = { neutral: "text-ink", good: "text-good"
 /** The run as one continuous line, left to right, in the order things ran. Every fork opens a new line
  * below it that leaves the original where the change was made. Select a node to see what it is. */
 export function FlowGraph({
-  steps, marks, experiments = [], outcome, resultText, selected, onSelect,
+  steps, marks, experiments = [], outcome, resultText, selected, onSelect, draft = null,
 }: {
+  draft?: { nodeRun: number } | null;
   steps: Step[];
   marks: Map<number, Mark>;
   experiments?: Experiment[];
@@ -21,7 +22,7 @@ export function FlowGraph({
   selected: string | null;
   onSelect: (node: GNode) => void;
 }) {
-  const graph = useMemo(() => buildGraph(steps, { marks, experiments, outcome, resultText }), [steps, marks, experiments, outcome, resultText]);
+  const graph = useMemo(() => buildGraph(steps, { marks, experiments, outcome, resultText, draft }), [steps, marks, experiments, outcome, resultText, draft]);
   const byId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph]);
 
   return (
@@ -70,7 +71,7 @@ function Edge({ edge, byId, tone }: { edge: GEdge; byId: Map<string, GNode>; ton
 function Node({ node: n, selected, onSelect }: { node: GNode; selected: boolean; onSelect: (n: GNode) => void }) {
   const { x, y } = pos(n);
   const ring =
-    n.mark?.kind === "cause" ? "border-bad" : n.mark?.kind === "carried" ? "border-warn" : n.kind === "edited" ? "border-dashed border-ink" : n.kind === "live" ? "border-muted" : "border-line";
+    n.draft ? "border-dashed border-muted" : n.mark?.kind === "cause" ? "border-bad" : n.mark?.kind === "carried" ? "border-warn" : n.kind === "edited" ? "border-dashed border-ink" : n.kind === "live" ? "border-muted" : "border-line";
   const fill = n.mark?.kind === "cause" ? "bg-bad-tint" : n.mark?.kind === "carried" ? "bg-warn-tint" : "bg-sheet";
   const label = n.kind === "result"
     ? <span className={`rounded-full border px-3 py-1 text-[0.9375rem] font-medium ${n.tone === "bad" ? "border-bad/40 bg-bad-tint text-bad" : n.tone === "good" ? "border-good/40 bg-good-tint text-good" : "border-line bg-tile text-ink"}`}>{n.label}</span>
@@ -82,7 +83,7 @@ function Node({ node: n, selected, onSelect }: { node: GNode; selected: boolean;
       onClick={() => onSelect(n)}
       aria-pressed={selected}
       aria-label={`${n.label}. ${n.sub}`}
-      className="arrive absolute flex w-[138px] flex-col items-center gap-1.5 text-center"
+      className={`arrive absolute flex w-[138px] flex-col items-center gap-1.5 text-center ${n.draft ? "opacity-70" : ""}`}
       style={{ left: x - 69, top: y - R }}
     >
       {n.kind === "result" ? (

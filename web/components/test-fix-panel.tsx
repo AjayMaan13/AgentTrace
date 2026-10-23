@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ApiError, useApi } from "@/lib/api";
+import { askedOf } from "@/components/inspector";
 import { diffState } from "@/lib/diff";
 import { forkPrefill, nodeRuns } from "@/lib/runs";
 import { brief } from "@/lib/story";
@@ -80,19 +81,27 @@ export function TestFixPanel({
     }
   }
 
+  // What went into this agent, read only, so you can decide what should have come out.
+  const first = run.steps.filter((s) => s.node_run_idx === selected.idx).sort((a, b) => a.idx - b.idx)[0];
+  const wentIn = first ? (first.kind === "tool" ? JSON.stringify(first.tool_args ?? {}, null, 2) : askedOf(first)) : null;
   const error = apiError;
   return (
     <section id="test-fix" tabIndex={-1} aria-label="Test a fix" className="flex flex-col gap-5">
       <div>
-        <h2 className="font-serif text-2xl">Fork this run</h2>
+        <h2 className="font-serif text-2xl">Fork at the <span className="capitalize">{selected.agent}</span></h2>
         <p className="mt-1 max-w-prose text-muted">
-          Change what one agent decided. A new line opens on the graph above and everything after that agent runs again,
-          with your change and without it, so you can see how often the answer comes out right.
+          Everything before this agent stays exactly as recorded. You change what this agent <b className="font-medium text-ink">produced</b>,
+          using what went into it as your guide. Then everything after it runs again, with your change and without it, and a new
+          line opens on the graph above.
+        </p>
+        <p className="mt-2 max-w-prose text-[0.8125rem] text-muted">
+          You can change any value this agent wrote for the next agent. You cannot yet change its instructions and run the agent
+          itself again, because that needs your workflow code.
         </p>
       </div>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor="agent" className="font-medium">1. Which agent should have decided differently?</label>
+        <label htmlFor="agent" className="font-medium">Which agent do you want to change?</label>
         <select
           id="agent"
           value={selected.idx}
@@ -107,8 +116,19 @@ export function TestFixPanel({
         </select>
       </div>
 
+      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="flex flex-col gap-2">
+        <p className="font-medium">What went in</p>
+        <p className="text-[0.8125rem] text-muted">Read only. This is what the agent was given.</p>
+        <pre tabIndex={0} className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-tile p-3 text-[0.875rem] leading-relaxed [overflow-wrap:anywhere]">
+          {wentIn ?? "No input was recorded for this agent."}
+        </pre>
+      </div>
       <div className="flex flex-col gap-3">
-        <p className="font-medium">2. What should it have written?</p>
+        <div>
+          <p className="font-medium">What came out. Change it here.</p>
+          <p className="text-[0.8125rem] text-muted">These are the values it wrote for the next agent. Edit the one that was wrong.</p>
+        </div>
         {Object.keys(prefill).map((key) => {
           const p = parsed.find((x) => x.key === key);
           return (
@@ -145,8 +165,10 @@ export function TestFixPanel({
         )}
       </div>
 
+      </div>
+
       <div className="flex flex-col gap-2">
-        <p className="font-medium" id="runs-label">3. How many runs?</p>
+        <p className="font-medium" id="runs-label">How many runs?</p>
         <div role="group" aria-labelledby="runs-label" className="flex flex-wrap items-center gap-2">
           {N_CHOICES.map((choice) => (
             <button

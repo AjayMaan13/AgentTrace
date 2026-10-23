@@ -27,6 +27,7 @@ export type GNode = {
   tone: Tone;
   nodeRun?: number; // which agent run this is, for the original line
   experiment?: string; // which fork a branch node belongs to
+  draft?: boolean; // part of a fork that has not been started yet
   change?: string[]; // on an edited node: each value that was changed, "name: before → after"
 };
 
@@ -37,7 +38,7 @@ export type Graph = { lanes: GLane[]; nodes: GNode[]; edges: GEdge[]; cols: numb
 const LIVE = "ran live in every run";
 
 export function buildGraph(
-  steps: Step[], opts: { marks?: Map<number, Mark>; experiments?: Experiment[]; outcome?: string; resultText?: string },
+  steps: Step[], opts: { marks?: Map<number, Mark>; experiments?: Experiment[]; outcome?: string; resultText?: string; draft?: { nodeRun: number } | null },
 ): Graph {
   const cards = agentCards(steps);
   const marks = opts.marks ?? new Map<number, Mark>();
@@ -89,6 +90,21 @@ export function buildGraph(
     // The new line leaves the original line just before the agent that was changed.
     edges.push({ id: `${e.id}:spawn`, from: forkAt === 0 ? "start" : `a${cards[forkAt - 1].idx}`, to: branch[0].id, kind: "spawn", lane });
   });
+
+  // A fork the person is setting up: the new line is there at once, drawn as not started.
+  const at = opts.draft ? cards.findIndex((c) => c.idx === opts.draft!.nodeRun) : -1;
+  if (opts.draft && at >= 0) {
+    const lane = lanes.length;
+    lanes.push({ index: lane, label: "New fork, not started", experiment: "draft", tone: "neutral" });
+    const draft: GNode[] = [
+      { id: "draft:edit", lane, col: at + 1, kind: "edited", label: cards[at].agent, sub: "your change goes here", tone: "neutral", experiment: "draft", draft: true },
+      ...cards.slice(at + 1).map((c, j): GNode => ({ id: `draft:${c.idx}`, lane, col: at + 2 + j, kind: "live", label: c.agent, sub: "will run live", tone: "neutral", experiment: "draft", draft: true })),
+      { id: "draft:end", lane, col: end, kind: "result", label: "Not run yet", sub: "make the change below", tone: "neutral", experiment: "draft", draft: true },
+    ];
+    nodes.push(...draft);
+    chain(edges, draft, lane);
+    edges.push({ id: "draft:spawn", from: at === 0 ? "start" : `a${cards[at - 1].idx}`, to: "draft:edit", kind: "spawn", lane });
+  }
 
   return {
     lanes, nodes, edges, cols: end + 1,

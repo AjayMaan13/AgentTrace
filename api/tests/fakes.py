@@ -79,8 +79,8 @@ class FakeDB:
         steps = sorted((s for (r, _), s in self.steps.items() if r == run_id), key=lambda s: s["idx"])
         return {**self.runs[run_id], "steps": steps}
 
-    async def list_runs(self, ws, limit=50):
-        return sorted((r for r in self.runs.values() if r["workspace"] == ws),
+    async def list_runs(self, ws, limit=50, kind=None):
+        return sorted((r for r in self.runs.values() if r["workspace"] == ws and (kind is None or r.get("kind") == kind)),
                       key=lambda r: r["started_at"], reverse=True)[:limit]
 
     async def create_fork_edge(self, ws, fork_run_id, parent_run_id, at_idx, arm, experiment=None):

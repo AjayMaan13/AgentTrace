@@ -36,13 +36,15 @@ function AppRun({ run, titleLevel }: { run: Run; titleLevel: 1 | 2 }) {
   const [tick, setTick] = useState(0); // bumping it asks for the list again, right after a fork starts
   const state = useApiData<Experiment[]>(`/v1/runs/${run.id}/experiments?k=${tick}`, (list) => (list.some((e) => !isFinished(e)) ? 1500 : null));
   const experiments = state.status === "ok" ? state.data : [];
-  return <RunBody run={run} mode="app" report={null} experiments={experiments} titleLevel={titleLevel} onForked={() => setTick((t) => t + 1)} initialSelected={fork ? `${fork}:end` : null} />;
+  const forksError = state.status === "error" ? state.message : null;
+  return <RunBody run={run} mode="app" report={null} experiments={experiments} forksError={forksError} titleLevel={titleLevel} onForked={() => setTick((t) => t + 1)} initialSelected={fork ? `${fork}:end` : null} />;
 }
 
 function RunBody({
-  run, mode, report, experiments, titleLevel, onForked, extra = null, initialSelected = null,
+  run, mode, report, experiments, titleLevel, onForked, extra = null, initialSelected = null, forksError = null,
 }: {
   initialSelected?: string | null;
+  forksError?: string | null;
   run: Run; mode: "app" | "demo"; report: RcaReport | null; experiments: Experiment[]; titleLevel: 1 | 2;
   onForked?: (experimentId: string) => void; extra?: React.ReactNode;
 }) {
@@ -53,6 +55,7 @@ function RunBody({
   const marks = useMemo(() => marksFromReport(known), [known]);
   const [selected, setSelected] = useState<string | null>(initialSelected);
   const [fix, setFix] = useState<{ nodeRunIdx: number; patch: State; nonce: number } | null>(null);
+  const [draft, setDraft] = useState<number | null>(null); // the agent a fork is being set up at: its line is drawn at once
 
   const failed = run.outcome === "fail" || run.outcome === "error";
   const got = run.oracle_detail?.footer?.open_tickets;
@@ -60,17 +63,21 @@ function RunBody({
   const resultText = got !== undefined && want !== undefined ? `${got} open tickets, not ${want}` : undefined;
   // Rebuilt from the current data, so a fork that finishes updates the node you are looking at.
   const node = useMemo(
-    () => (selected ? buildGraph(run.steps, { marks, experiments, outcome: run.outcome, resultText }).nodes.find((n) => n.id === selected) ?? null : null),
-    [selected, run.steps, run.outcome, marks, experiments, resultText],
+    () => (selected ? buildGraph(run.steps, { marks, experiments, outcome: run.outcome, resultText, draft: draft === null ? null : { nodeRun: draft } }).nodes.find((n) => n.id === selected) ?? null : null),
+    [selected, run.steps, run.outcome, marks, experiments, resultText, draft],
   );
 
-  function startFork(nodeRunIdx: number, patch: State = {}) {
-    setFix((prev) => ({ nodeRunIdx, patch, nonce: (prev?.nonce ?? 0) + 1 }));
+  function scrollToForm() {
     setTimeout(() => {
       const panel = document.getElementById("test-fix");
       panel?.scrollIntoView({ behavior: "smooth", block: "start" });
       panel?.focus({ preventScroll: true });
     }, 50);
+  }
+  function startFork(nodeRunIdx: number, patch: State = {}) {
+    setDraft(nodeRunIdx);
+    setFix((prev) => ({ nodeRunIdx, patch, nonce: (prev?.nonce ?? 0) + 1 }));
+    scrollToForm();
   }
   function testCandidate(c: Candidate) {
     if (c.proposed_edit) startFork(c.node_run_idx, c.proposed_edit.patch);
@@ -101,7 +108,13 @@ function RunBody({
         <FlowGraph
           steps={run.steps} marks={marks} experiments={experiments} outcome={run.outcome} resultText={resultText}
           selected={selected} onSelect={(n) => setSelected((s) => (s === n.id ? null : n.id))}
+          draft={draft === null ? null : { nodeRun: draft }}
         />
+        {forksError && (
+          <p role="alert" className="rounded-lg border border-bad/30 bg-bad-tint px-3 py-2 text-bad">
+            Could not load this run&apos;s forks ({forksError}). A fork you start will still run, but it will not show here until this loads. If you just updated the app, restart the API.
+          </p>
+        )}
         <p className="text-[0.8125rem] text-muted">
           In this workflow each agent waits for the one before it, so the line has no side-by-side agents. AgentTrace records the
           order steps ran in, not their start times, so it cannot yet draw agents that ran at the same time.
@@ -110,7 +123,7 @@ function RunBody({
           node={node} run={run} report={known} experiments={experiments} mode={mode}
           runHref={(id) => (mode === "demo" ? `/demo/runs/${id}` : `/runs/${id}`)}
           experimentHref={(id) => (mode === "demo" ? null : `/experiments/${id}`)}
-          onFork={(n) => startFork(n)} canFork={canFork}
+          onFork={(n) => (n === 0 ? scrollToForm() : startFork(n))} canFork={canFork}
         />
       </section>
 
@@ -129,6 +142,7 @@ function RunBody({
             key={`${run.id}-${fix?.nonce ?? 0}`} run={run} request={fix}
             onLaunched={(id) => {
               onForked?.(id);
+              setDraft(null);
               setSelected(`${id}:end`);
               document.getElementById("run-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}

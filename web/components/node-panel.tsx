@@ -34,6 +34,18 @@ export function NodePanel({
       </section>
     );
   }
+  if (node.draft) {
+    return (
+      <section className="card p-5" aria-live="polite" aria-label="Details: new fork">
+        <h3 className="font-serif text-xl">Your new fork</h3>
+        <p className="mt-1 max-w-prose text-muted">
+          This line is not running yet. Change what this agent decided in the form below, choose how many
+          runs, and click Fork and run. Then this line becomes real and fills in as the runs finish.
+        </p>
+        <button type="button" className="btn btn-primary mt-3" onClick={() => onFork(0)}>Go to the form</button>
+      </section>
+    );
+  }
   const exp = node.experiment ? experiments.find((e) => e.id === node.experiment) : undefined;
   return (
     <section className="card p-5" aria-live="polite" aria-label={`Details: ${node.label}`}>

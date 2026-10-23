@@ -117,3 +117,17 @@ def test_the_workspace_lists_all_its_forks_and_registered_workflows_are_forkable
     forks = api.get("/v1/experiments").json()
     assert len(forks) == 1 and forks[0]["parent_run"] == parent
     assert api.get(f"/v1/runs/{parent}").json()["forkable"] is True
+
+
+# --- the runs list must not drown in fork attempts -----------------------------------------
+
+def test_the_recorded_filter_keeps_fork_attempts_from_pushing_real_runs_out(api, store):
+    real = api.post("/v1/runs/import", json=LOG).json()["id"]
+    for i in range(12):  # twelve attempts from forks, all newer than the real run
+        store.runs[f"fork-attempt-{i:02d}"] = {"id": f"fork-attempt-{i:02d}", "workspace": "ws-a", "workflow": "wf",
+                                               "started_at": f"2099-01-01T00:00:{i:02d}+00:00", "status": "ok", "kind": "fork"}
+    newest_50 = [r["id"] for r in api.get("/v1/runs?limit=5").json()]
+    assert real not in newest_50  # the problem: the real run is pushed out
+    assert [r["id"] for r in api.get("/v1/runs?kind=recorded&limit=5").json()] == [real]
+    assert len(api.get("/v1/runs?kind=fork&limit=50").json()) == 12
+    assert api.get("/v1/runs?kind=nonsense").status_code == 422

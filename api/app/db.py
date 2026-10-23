@@ -251,11 +251,14 @@ async def get_run_with_steps(workspace: str, run_id: str) -> dict[str, Any] | No
     return run
 
 
-async def list_runs(workspace: str, limit: int = 50) -> list[dict[str, Any]]:
+async def list_runs(workspace: str, limit: int = 50, kind: str | None = None) -> list[dict[str, Any]]:
+    """Newest first. `kind="recorded"` leaves out the runs a fork makes (one per attempt): without it
+    a few forks fill the list and push the runs people recorded out of it."""
+    where = "workspace = $ws" + (" AND kind = $kind" if kind else "")
     async with connect() as c:
         rows = await c.query(
-            "SELECT * FROM run WHERE workspace = $ws ORDER BY started_at DESC LIMIT $n",
-            {"ws": workspace, "n": limit},
+            f"SELECT * FROM run WHERE {where} ORDER BY started_at DESC LIMIT $n",
+            {"ws": workspace, "n": limit, **({"kind": kind} if kind else {})},
         )
     return [_row(r) for r in rows]
 

@@ -19,7 +19,7 @@ export function textOf(value: unknown): string | null {
 }
 
 /** What this model call was asked: the last message it was given. */
-function askedOf(step: Step): string | null {
+export function askedOf(step: Step): string | null {
   const messages = (step.input as { messages?: unknown[] } | null)?.messages;
   if (!Array.isArray(messages) || messages.length === 0) return null;
   return textOf(messages[messages.length - 1]);
