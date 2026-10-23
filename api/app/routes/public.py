@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Response
 
 from app import db
+from app.benchmark import benchmark_view
 from app.config import get_settings
 from app.experiments.runner import view
 from app.rca.report import report_view
@@ -49,7 +50,11 @@ async def demo(response: Response) -> dict[str, Any]:
         return {
             "run": run,
             "rca": report_view(report) if report else None,
-            "experiments": [{"role": e.get("demo_role"), **view(e)} for e in experiments],
+            "experiments": [
+                {"role": e.get("demo_role"), **view(e),
+                 "benchmark": benchmark_view(await db.get_benchmark_for_experiment(workspace, e["id"]))}
+                for e in experiments
+            ],
         }
 
     payload = await _cached("demo", load)

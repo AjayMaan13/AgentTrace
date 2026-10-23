@@ -3,6 +3,7 @@ import pytest
 from app import db
 from app.auth import Principal, get_principal
 from app.main import app
+from app.rca import memory
 from app.security import limits
 from fakes import DB_FUNCTIONS, FakeDB
 
@@ -32,3 +33,13 @@ def fresh_rate_limits():
     """The limiters are module-level (per process), so each test starts with empty windows."""
     limits.experiment_limiter._calls.clear()
     limits.rca_limiter._calls.clear()
+
+
+@pytest.fixture(autouse=True)
+def no_real_agent_memory(request, monkeypatch):
+    """Offline tests must never reach the real Agent Memory service: with a key in .env, a finished
+    fake experiment would otherwise write a test pattern into the real context (and slow the suite
+    by seconds of network). Tests that need memory install a fake (see test_memory.py); only the
+    *_live modules get the real client."""
+    if not request.module.__name__.endswith("_live"):
+        monkeypatch.setattr(memory, "_open", lambda: None)

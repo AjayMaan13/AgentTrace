@@ -127,3 +127,34 @@ def test_redaction_is_idempotent_so_ingest_can_run_it_again():
     once, first = redact(payload)
     twice, second = redact(once)
     assert first and twice == once and second == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "z" * 200_000,
+        "a." * 100_000,
+        "1" * 200_000,
+        "1 " * 100_000,
+        "a@" * 100_000,
+        "a@" + "b-" * 100_000,
+        "sk-" + "a" * 200_000,
+        "Bearer " + "a" * 200_000,
+        "(" + "1" * 200_000,
+        ("x" * 1000 + "@") * 200,
+    ],
+)
+def test_redaction_time_is_linear_in_the_input_so_a_huge_field_cannot_pin_the_cpu(text):
+    """Every pattern must be safe on adversarial long input. Before the email pattern got a
+    lookbehind, 40,000 characters took 1.8 s and the cost quadrupled when the input doubled."""
+    import time
+
+    started = time.perf_counter()
+    redact(text)
+    assert time.perf_counter() - started < 1.0
+
+
+def test_emails_are_still_found_after_the_performance_fix():
+    for text in ("jane@acme.com", "mail: jane.doe+x@example.co.uk;", "x_jane-1@a.io", "(bob@corp.org)"):
+        out, found = redact(text)
+        assert found and found[0]["type"] == "email" and "@" not in out

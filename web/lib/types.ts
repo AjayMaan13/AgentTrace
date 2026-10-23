@@ -60,6 +60,17 @@ export type Tile = {
 
 export type Arm = { pass: number; total: number };
 
+export type BenchmarkArm = { pass: number; total: number; errors: number };
+
+// Generalization benchmark: whole fresh runs on other accounts, original vs patched prompt.
+export type Benchmark = {
+  n: number;
+  created_at: string | null;
+  excluded_account: string | null; // the account the fix was found on, left out on purpose
+  accounts: { account_id: string; original: BenchmarkArm; patched: BenchmarkArm }[];
+  totals: { original: Arm; patched: Arm };
+};
+
 export type Experiment = {
   id: string;
   status: "queued" | "running" | "done" | "capped" | "error";
@@ -78,6 +89,7 @@ export type Experiment = {
   tokens_used: number;
   token_ceiling: number;
   error: string | null;
+  benchmark?: Benchmark | null; // present once a benchmark has been stored for this experiment
 };
 
 export type Candidate = {
@@ -107,7 +119,29 @@ export type RcaReport = {
   lineage: number[]; // node runs on the data path to the failing output
   dropped_quotes: number;
   recalled: RecalledPattern[];
+  verification: Verification | null; // auto-verify: the top candidates tested by real experiments
+  verdict_idx: number | null; // index (in `candidates`) of the top verified candidate
+  verified_by: string[]; // experiment ids that verified a candidate
   tokens_in: number;
   tokens_out: number;
   candidates: Candidate[]; // ranked, most likely first
+};
+
+export type VerificationItem = {
+  candidate_idx: number;
+  experiment_id?: string;
+  error?: string; // why this candidate could not be tested
+  status?: string;
+  control?: Arm;
+  treatment?: Arm;
+  delta?: number | null; // treatment pass rate minus control pass rate
+  verified?: boolean;
+};
+
+export type Verification = {
+  status: "running" | "done" | "error";
+  n: number;
+  items: VerificationItem[];
+  ranking?: number[]; // candidate indexes, best measured first
+  error?: string;
 };

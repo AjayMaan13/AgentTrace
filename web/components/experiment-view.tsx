@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BenchmarkTable } from "@/components/benchmark-table";
 import { JsonBlock } from "@/components/json-block";
 import { formatP, formatTokens, percent, shortId } from "@/lib/format";
 import type { Experiment, Tile } from "@/lib/types";
@@ -53,6 +54,8 @@ export function ExperimentView({
           ceiling). Select a finished tile to open its run.
         </p>
       </section>
+
+      {e.benchmark && <BenchmarkTable benchmark={e.benchmark} />}
 
       <details className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
         <summary className="cursor-pointer text-sm font-medium">The edit applied to the treatment arm</summary>

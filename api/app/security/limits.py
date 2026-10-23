@@ -8,6 +8,7 @@ The rate limiter is in memory, so it is per server process: fine for one API ins
 daily cap (counted from the database) is the limit that holds across restarts.
 """
 
+import asyncio
 import hashlib
 import time
 from collections import defaultdict, deque
@@ -19,6 +20,10 @@ from fastapi import HTTPException
 
 from app import db
 from app.config import get_settings
+
+# One launch at a time through the cap check and the create, so two quick requests cannot both
+# slip under the daily limit. Shared by every route that starts experiments.
+launch_lock = asyncio.Lock()
 
 MAX_FIELD_CHARS = 32_768
 MAX_BODY_BYTES = 5_000_000
@@ -67,13 +72,13 @@ def _next_utc_midnight(now: datetime) -> datetime:
     return datetime(now.year, now.month, now.day, tzinfo=UTC) + timedelta(days=1)
 
 
-async def enforce_daily_cap(user_id: str, now: datetime | None = None) -> None:
-    """429 if this user has already started their daily allowance of experiments."""
+async def enforce_daily_cap(user_id: str, now: datetime | None = None, needed: int = 1) -> None:
+    """429 if starting `needed` more experiments would pass this user's daily allowance."""
     now = now or datetime.now(UTC)
     cap = get_settings().daily_experiments_per_user
     since = datetime(now.year, now.month, now.day, tzinfo=UTC).isoformat()
     used = await db.count_experiments_since(user_id, since)
-    if used >= cap:
+    if used + needed > cap:
         wait = int((_next_utc_midnight(now) - now).total_seconds())
         raise HTTPException(
             status_code=429, headers={"Retry-After": str(wait)},

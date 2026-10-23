@@ -324,6 +324,25 @@ async def list_memory_scopes(workspace: str, limit: int = 50) -> list[str]:
     return list(dict.fromkeys(r["memory_scope"] for r in rows if r.get("memory_scope")))
 
 
+# --- benchmarks ------------------------------------------------------------------------------
+
+async def create_benchmark(workspace: str, benchmark_id: str, doc: dict[str, Any]) -> None:
+    async with connect() as c:
+        await c.query(
+            "CREATE type::record('benchmark', $id) CONTENT $d", {"id": benchmark_id, "d": {**doc, "workspace": workspace}}
+        )
+
+
+async def get_benchmark_for_experiment(workspace: str, experiment_id: str) -> dict[str, Any] | None:
+    """The newest benchmark attached to an experiment."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM benchmark WHERE workspace = $ws AND experiment = $e ORDER BY created_at DESC LIMIT 1",
+            {"ws": workspace, "e": experiment_id},
+        )
+    return _row(rows[0]) if rows else None
+
+
 # --- RCA reports -----------------------------------------------------------------------------
 
 async def create_rca_report(workspace: str, report_id: str, doc: dict[str, Any]) -> None:
@@ -331,6 +350,14 @@ async def create_rca_report(workspace: str, report_id: str, doc: dict[str, Any])
         await c.query(
             "CREATE type::record('rca_report', $id) CONTENT $d",
             {"id": report_id, "d": {**doc, "workspace": workspace}},
+        )
+
+
+async def update_rca_report(workspace: str, report_id: str, merge: dict[str, Any]) -> None:
+    async with connect() as c:
+        await c.query(
+            "UPDATE type::record('rca_report', $id) MERGE $m WHERE workspace = $ws",
+            {"id": report_id, "m": merge, "ws": workspace},
         )
 
 
@@ -419,6 +446,7 @@ async def _delete_runs(c: Any, workspace: str, run_ids: list[str]) -> dict[str, 
         "SELECT count() AS n FROM rca_report WHERE workspace = $ws AND run IN $ids GROUP ALL", {"ws": workspace, "ids": run_ids}
     ))
 
+    await c.query("DELETE benchmark WHERE workspace = $ws AND experiment IN $e", {"ws": workspace, "e": [r.id for r in exp_rids]})
     await c.query("DELETE tested WHERE in IN $e OR out IN $r", {"e": exp_rids, "r": run_rids})
     await c.query("DELETE experiment WHERE workspace = $ws AND parent_run IN $ids", {"ws": workspace, "ids": run_ids})
     await c.query("DELETE rca_report WHERE workspace = $ws AND run IN $ids", {"ws": workspace, "ids": run_ids})
@@ -468,5 +496,6 @@ async def purge_workspace(workspace: str) -> None:
         await c.query("DELETE experiment WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE rca_report WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE audit WHERE workspace = $ws", {"ws": workspace})
+        await c.query("DELETE benchmark WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE api_key WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE type::record('workspace', $ws)", {"ws": workspace})

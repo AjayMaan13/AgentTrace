@@ -15,6 +15,7 @@ class FakeDB:
         self.tested: list[tuple[str, str]] = []
         self.rca_reports: list[dict[str, Any]] = []
         self.audit: list[dict[str, Any]] = []
+        self.benchmarks: list[dict[str, Any]] = []
         self.fail_audit = False
 
     async def workspace_for_key_hash(self, h):
@@ -88,6 +89,13 @@ class FakeDB:
                 "tokens_in": sum(s["tokens_in"] for s in steps),
                 "tokens_out": sum(s["tokens_out"] for s in steps)}
 
+    async def create_benchmark(self, ws, benchmark_id, doc):
+        self.benchmarks.append({**doc, "id": benchmark_id, "workspace": ws})
+
+    async def get_benchmark_for_experiment(self, ws, experiment_id):
+        mine = [b for b in self.benchmarks if b["workspace"] == ws and b["experiment"] == experiment_id]
+        return max(mine, key=lambda b: b["created_at"]) if mine else None
+
     async def create_audit(self, ws, doc):
         if self.fail_audit:
             raise RuntimeError("audit store down")
@@ -113,6 +121,7 @@ class FakeDB:
                "run_ids": ids, "memory_scopes": sorted({e["memory_scope"] for e in exps.values() if e.get("memory_scope")})}
         for k in steps:
             del self.steps[k]
+        self.benchmarks = [b for b in self.benchmarks if b["experiment"] not in exps]
         for i in exps:
             del self.experiments[i]
         self.tested = [t for t in self.tested if t[0] not in exps and t[1] not in ids]
@@ -148,6 +157,11 @@ class FakeDB:
     async def create_rca_report(self, ws, report_id, doc):
         self.rca_reports.append({**doc, "id": report_id, "workspace": ws})
 
+    async def update_rca_report(self, ws, report_id, merge):
+        for r in self.rca_reports:
+            if r["id"] == report_id and r["workspace"] == ws:
+                r.update(merge)
+
     async def get_latest_rca_report(self, ws, run_id):
         mine = [r for r in self.rca_reports if r["workspace"] == ws and r["run"] == run_id]
         return max(mine, key=lambda r: r["created_at"]) if mine else None
@@ -158,4 +172,5 @@ DB_FUNCTIONS = ("workspace_for_key_hash", "create_run", "run_exists", "add_steps
                 "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",
                 "get_featured_run_id", "list_featured_experiments", "list_memory_scopes", "create_audit", "list_audit",
-                "count_experiments_since", "delete_run_cascade")
+                "count_experiments_since", "delete_run_cascade", "update_rca_report",
+                "create_benchmark", "get_benchmark_for_experiment")

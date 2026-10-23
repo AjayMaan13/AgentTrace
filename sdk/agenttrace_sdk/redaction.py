@@ -32,7 +32,12 @@ _PATTERNS = (
     )),
     # Needs a digit in the token so prose like "bearer authorization" is left alone.
     ("bearer", re.compile(r"(?i)\bBearer\s+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{10,}")),
-    ("email", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")),
+    # The lookbehind makes a match start only at the beginning of a run of address characters.
+    # Without it a long run with no "@" is rescanned from every position: quadratic time, which
+    # a hostile or buggy sender could use to pin the server (40,000 chars took 1.8 s, 100 KB 11 s).
+    ("email", re.compile(
+        r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+    )),
     ("card", re.compile(r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)")),
     # Needs separators ("415-555-0123"), so bare 10-digit ids are not treated as phones.
     ("phone", re.compile(
