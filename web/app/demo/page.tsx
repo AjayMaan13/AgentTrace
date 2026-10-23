@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { loadDemo } from "@/lib/demo";
 import { DemoView } from "./demo-loader";
 
+export const metadata = { title: "Saved example" };
+
 async function Content() {
   return <DemoView demo={await loadDemo()} />;
 }

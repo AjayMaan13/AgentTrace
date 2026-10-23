@@ -1,6 +1,8 @@
 import { Shell } from "@/components/shell";
 import { ForksList } from "./forks-list";
 
+export const metadata = { title: "Forks" };
+
 export default function ForksPage() {
   return (
     <Shell>

@@ -2,7 +2,7 @@ import { diffState } from "./diff.ts";
 import { nodeRuns } from "./runs.ts";
 import { agentCards, brief, callsLabel, type Mark } from "./story.ts";
 import { verdictFor } from "./verdict.ts";
-import type { Experiment, Step } from "./types";
+import type { Experiment, Origin, Step } from "./types";
 
 /** The run as a line. One lane is one path through the workflow: lane 0 is the original run, and every
  * fork (an experiment) opens a new lane that leaves the line where the change was made. Columns are
@@ -27,6 +27,7 @@ export type GNode = {
   tone: Tone;
   nodeRun?: number; // which agent run this is, for the original line
   experiment?: string; // which fork a branch node belongs to
+  origin?: Origin; // set when the step did not come straight from the recording
   draft?: boolean; // part of a fork that has not been started yet
   change?: string[]; // on an edited node: each value that was changed, "name: before → after"
 };
@@ -47,9 +48,10 @@ export function buildGraph(
   const lanes: GLane[] = [{ index: 0, label: "Original run", tone: "neutral" }];
 
   cards.forEach((c, i) => {
+    const o = originNote(c.steps);
     nodes.push({
-      id: `a${c.idx}`, lane: 0, col: i + 1, kind: "agent", label: c.agent, sub: callsLabel(c),
-      mark: marks.get(c.idx), tone: "neutral", nodeRun: c.idx,
+      id: `a${c.idx}`, lane: 0, col: i + 1, kind: "agent", label: c.agent, sub: o ? o.note : callsLabel(c),
+      mark: marks.get(c.idx), tone: "neutral", nodeRun: c.idx, origin: o?.origin,
     });
   });
   const end = cards.length + 1;
@@ -112,6 +114,16 @@ export function buildGraph(
   };
 }
 
+/** Where an agent's steps came from, when that is not simply "the original recording": copied exactly,
+ * changed by a fork, or run again live. This is the line between what replays and what is sampled. */
+export function originNote(steps: Step[]): { origin: Origin; note: string } | null {
+  const seen = new Set(steps.map((s) => s.origin));
+  if (seen.size === 1 && seen.has("recorded")) return null;
+  if (seen.has("edited")) return { origin: "edited", note: "your change is applied here" };
+  if (seen.has("live")) return { origin: "live", note: "ran live, so it is sampled" };
+  return { origin: "replayed", note: "replayed exactly from the recording" };
+}
+
 /** What a fork changed, in words: each value that differs from the recording, before and after. */
 export function describeEdit(steps: Step[], nodeRun: number, patch: Record<string, unknown>): { lines: string[]; short: string | null } {
   const after = nodeRuns(steps).find((r) => r.idx === nodeRun)?.stateAfter ?? {};
@@ -120,7 +132,11 @@ export function describeEdit(steps: Step[], nodeRun: number, patch: Record<strin
   const leaf = (path: string) => path.split(".").slice(-1)[0];
   const lines = changes.map((c) => `${c.path}: ${c.kind === "added" ? "nothing" : brief(c.before, 60)} → ${c.kind === "removed" ? "nothing" : brief(c.after, 60)}`);
   const first = changes[0];
-  const short = first
+  const long = (v: unknown) => typeof v === "string" && v.length > 24;
+  // Long text is not readable cut in half on a node: say what happened, and keep the words for the panel.
+  const short = first && (long(first.before) || long(first.after))
+    ? `${leaf(first.path)} rewritten${changes.length > 1 ? ` (+${changes.length - 1})` : ""}`
+    : first
     ? `${leaf(first.path)}: ${first.kind === "added" ? "nothing" : brief(first.before, 16)} → ${first.kind === "removed" ? "nothing" : brief(first.after, 16)}${changes.length > 1 ? ` (+${changes.length - 1})` : ""}`
     : null;
   return { lines, short };

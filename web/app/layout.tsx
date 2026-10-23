@@ -8,9 +8,13 @@ const newsreader = Newsreader({ variable: "--font-newsreader", subsets: ["latin"
 // Monospace is only for real code: state values, ids and JSON.
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const PITCH = "AgentTrace draws a multi-agent run as one line, marks where the mistake came in, and lets you fork any step to test a fix before you ship it.";
+
 export const metadata: Metadata = {
-  title: "AgentTrace",
-  description: "A debugger for multi-agent LLM workflows: fork a step and measure the fix.",
+  title: { default: "AgentTrace: see which agent broke your run", template: "%s · AgentTrace" },
+  description: PITCH,
+  openGraph: { title: "AgentTrace: see which agent broke your run", description: PITCH, siteName: "AgentTrace", type: "website" },
+  twitter: { card: "summary", title: "AgentTrace: see which agent broke your run", description: PITCH },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

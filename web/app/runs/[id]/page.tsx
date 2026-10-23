@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { RunLoader } from "./run-loader";
 
+export const metadata = { title: "Run" };
+
 export default function RunPage() {
   return (
     <Shell>

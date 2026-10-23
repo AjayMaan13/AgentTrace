@@ -67,18 +67,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
 /** The bar for pages without a sidebar: the landing page and sign-in. */
 export function TopBar() {
   return (
-    <header className="flex h-14 items-center justify-between gap-3 px-5 sm:px-8">
+    <header className="flex h-14 items-center justify-between gap-3 px-4 sm:px-8">
       <Brand />
       <Suspense>
         <nav className="flex items-center gap-3">
-          <Link href="/demo" className="text-muted hover:text-ink">Saved example</Link>
+          <Link href="/demo" className="hidden text-muted hover:text-ink sm:inline">Saved example</Link>
           <Show when="signed-out">
             <SignInButton>
-              <button type="button" className="btn btn-primary">Sign in</button>
+              <button type="button" className="btn btn-primary whitespace-nowrap">Sign in</button>
             </SignInButton>
           </Show>
           <Show when="signed-in">
-            <Link href="/runs" className="btn btn-primary">Open your runs</Link>
+            <Link href="/runs" className="btn btn-primary whitespace-nowrap">Open your runs</Link>
           </Show>
         </nav>
       </Suspense>

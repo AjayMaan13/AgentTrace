@@ -115,6 +115,12 @@ function RunBody({
             Could not load this run&apos;s forks ({forksError}). A fork you start will still run, but it will not show here until this loads. If you just updated the app, restart the API.
           </p>
         )}
+        {run.steps.some((s) => s.origin !== "recorded") && (
+          <p className="text-[0.8125rem] text-muted">
+            This run was made by a fork. <b className="font-medium text-ink">Replayed</b> steps are copied exactly from the recording and call no model.{" "}
+            <b className="font-medium text-ink">Live</b> steps ran again against Claude, so they are sampled and can differ from run to run.
+          </p>
+        )}
         <p className="text-[0.8125rem] text-muted">
           In this workflow each agent waits for the one before it, so the line has no side-by-side agents. AgentTrace records the
           order steps ran in, not their start times, so it cannot yet draw agents that ran at the same time.

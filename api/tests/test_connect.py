@@ -131,3 +131,44 @@ def test_the_recorded_filter_keeps_fork_attempts_from_pushing_real_runs_out(api,
     assert [r["id"] for r in api.get("/v1/runs?kind=recorded&limit=5").json()] == [real]
     assert len(api.get("/v1/runs?kind=fork&limit=50").json()) == 12
     assert api.get("/v1/runs?kind=nonsense").status_code == 422
+
+
+# --- the saved example, copied into a workspace ----------------------------------------------
+
+def seed_example(store):
+    """A featured run in the demo workspace, as the seed script leaves it."""
+    run_id = record(BUGGY_PLAN, "No open tickets.", draft(0), APPROVE, ws="demo")
+    store.runs[run_id].update(outcome="fail", featured=True, oracle_detail={"open_tickets_ok": False})
+    return run_id
+
+
+def test_the_saved_example_is_copied_into_my_workspace_and_can_be_forked(api, store):
+    source = seed_example(store)
+    resp = api.post("/v1/runs/sample")
+    assert resp.status_code == 201 and resp.json()["steps"] == len(
+        [k for k in store.steps if k[0] == source])
+    copy = api.get(f"/v1/runs/{resp.json()['id']}").json()
+    assert copy["id"] != source and copy["outcome"] == "fail" and copy["forkable"] is True
+    assert copy["oracle_detail"] == {"open_tickets_ok": False}
+    assert store.runs[copy["id"]]["workspace"] == "ws-a"
+    assert store.runs[source]["workspace"] == "demo"  # the original is untouched
+
+
+def test_the_copy_is_a_real_run_that_can_start_a_fork(api, store):
+    seed_example(store)
+    copy_id = api.post("/v1/runs/sample").json()["id"]
+    exp = run_experiment(copy_id, n=2)
+    assert api.get(f"/v1/experiments/{exp}").json()["treatment"]["total"] == 2
+
+
+def test_each_press_makes_a_new_copy_and_another_workspace_never_sees_it(api, store, login):
+    seed_example(store)
+    first = api.post("/v1/runs/sample").json()["id"]
+    second = api.post("/v1/runs/sample").json()["id"]
+    assert first != second
+    login("ws-b")
+    assert api.get(f"/v1/runs/{first}").status_code == 404
+
+
+def test_without_a_saved_example_the_button_says_so(api):
+    assert api.post("/v1/runs/sample").status_code == 404

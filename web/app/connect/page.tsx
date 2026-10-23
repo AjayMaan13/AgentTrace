@@ -1,6 +1,8 @@
 import { Shell } from "@/components/shell";
 import { Connect } from "./connect";
 
+export const metadata = { title: "Connect your agents" };
+
 export default function ConnectPage() {
   return (
     <Shell>

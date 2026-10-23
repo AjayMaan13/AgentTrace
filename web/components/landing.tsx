@@ -14,10 +14,12 @@ export function Landing({ demo }: { demo: Demo | null }) {
   return (
     <div className="flex min-h-svh flex-col">
       <TopBar />
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-20 px-5 pb-20 pt-10 sm:px-8 sm:pt-16">
-        <section className="flex flex-col gap-6">
-          <h1 className="max-w-3xl font-serif text-[2.5rem] leading-[1.08] sm:text-[3.5rem]">See which agent broke your run.</h1>
-          <p className="max-w-[56ch] text-[1.1875rem] text-muted">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-20 px-5 pb-20 pt-4 sm:px-8 sm:pt-6">
+        {/* The line and its forks are part of the first screen, so the headline and the picture sit together. */}
+        <div className="flex flex-col gap-7">
+        <section className="flex flex-col gap-4">
+          <h1 className="max-w-3xl font-serif text-[2.25rem] leading-[1.08] sm:text-[2.75rem]">See which agent broke your run.</h1>
+          <p className="max-w-[60ch] text-[1.0625rem] text-muted">
             AgentTrace draws a multi-agent run as one line, marks where the mistake came in, and lets you fork any step to test a fix
             before you ship it.
           </p>
@@ -37,6 +39,8 @@ export function Landing({ demo }: { demo: Demo | null }) {
             <div className="card flex h-64 items-center justify-center text-muted">The saved example is loading.</div>
           )}
         </section>
+
+        </div>
 
         <section aria-label="How you use it" className="grid gap-x-12 gap-y-6 lg:grid-cols-[1fr_2fr]">
           <h2 className="font-serif text-3xl">How you use it</h2>

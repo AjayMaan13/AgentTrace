@@ -18,8 +18,12 @@ On the demo workflow (a renewal brief that wrongly reports 0 open tickets):
 
 - Decoy, make the critic stricter: **0/5 → 0/5** (p = 1.0). The obvious fix does nothing.
 - Hero, fix the planner's ticket filter: **0/8 → 8/8** (Fisher p = 0.00016, directional).
-- Root-cause agent ranked the planner first (80%); auto-verify confirmed it, 0/3 → 3/3.
+- Root-cause agent ranked the planner first (80%); a small test supported it, 0/3 → 3/3 (too few runs to be sure).
 - Generalization: original vs patched planner prompt on five other Era accounts, 3 fresh runs each: **0/15 vs 13/15**. Two patched runs crashed and count as failures.
+
+## Try it yourself
+
+Sign in, create an organization, and open **Connect your agents**. One button adds the saved example to your workspace, so you can open its line, find the cause and fork it in a minute, with no code. You can also make an ingest key and wire the Python recorder into your own agents, or import past logs from a JSON file. Runs you record or import yourself are view only for now: forking re-runs your agents' code, which needs the customer-hosted worker described below.
 
 ## How it works
 

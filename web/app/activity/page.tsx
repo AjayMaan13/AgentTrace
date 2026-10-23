@@ -1,6 +1,8 @@
 import { Shell } from "@/components/shell";
 import { ActivityList } from "./activity-list";
 
+export const metadata = { title: "Activity" };
+
 export default function ActivityPage() {
   return (
     <Shell>

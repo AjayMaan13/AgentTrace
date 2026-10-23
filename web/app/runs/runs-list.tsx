@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LoadState } from "@/components/load-state";
 import { OutcomeBadge } from "@/components/badges";
 import { RunTimeline } from "@/components/run-timeline";
+import { SampleRunButton } from "@/components/sample-run-button";
 import { formatTime, formatTokens } from "@/lib/format";
 import type { Experiment, RunSummary } from "@/lib/types";
 import { useApiData } from "@/lib/use-api-data";
@@ -21,11 +22,12 @@ export function RunsList() {
           <div className="card flex flex-col gap-3 p-6">
             <h2 className="font-serif text-xl">No runs yet</h2>
             <p className="max-w-[60ch] text-muted">
-              Connect your agents and every run appears here as a line. Or bring runs you already have.
+              The quickest way to see AgentTrace work is to add the saved example to this workspace. You can then open its line
+              and fork it. Or connect your own agents.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/connect" className="btn btn-primary">Connect your agents</Link>
-              <Link href="/demo" className="btn">Look at a saved example first</Link>
+            <div className="flex flex-wrap items-start gap-3">
+              <SampleRunButton />
+              <Link href="/connect" className="btn">Connect your agents</Link>
             </div>
           </div>
         ) : (

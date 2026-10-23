@@ -16,7 +16,7 @@ The demo workflow is a four-agent **renewal risk brief** (planner → researcher
 | --- | --- | --- | --- | --- |
 | **Decoy:** make the critic stricter (fork at the critic) | 0/5 | 0/5 | 1.0 | The obvious fix does nothing: the data never contained open tickets. |
 | **Hero:** fix the planner's ticket filter (fork at the planner) | 0/8 | 8/8 | 0.00016 | Same fork point both arms; only the edit differs. 62,722 tokens. |
-| **Root-cause agent** | | | | Ranked the planner #1 (confidence 0.80). Auto-verify tested it at N=3: 0/3 → 3/3, verified. |
+| **Root-cause agent** | | | | Ranked the planner #1 (confidence 0.80). A small test (N=3 each way) supported it: 0/3 → 3/3. That is too few runs to be sure. |
 | **Generalization benchmark:** original vs patched planner prompt, 5 other Era accounts, 3 fresh end-to-end runs each | 0/15 | 13/15 | | Two patched runs crashed and count as not passing. |
 
 These are the stored results behind the `/demo` page, not mock-ups. N is small, so every figure is **directional evidence**, not proof.
@@ -83,14 +83,14 @@ cp .env.example .env            # names only; fill in the values you have
 
 # API (offline tests: fake database and fake model)
 cd api && python3.11 -m venv .venv && .venv/bin/pip install -e ../sdk -e '.[dev]'
-.venv/bin/pytest                # 213 passed, 13 live tests skipped
+.venv/bin/pytest                # 231 passed, 13 live tests skipped
 cd ..
 
 # SDK (stdlib only)
-api/.venv/bin/pytest sdk/
+api/.venv/bin/pytest sdk/              # 68 passed
 
 # Web
-cd web && npm install && npm test && npm run build
+cd web && npm install && npm test && npm run build   # 38 passed
 ```
 
 To run it for real you need a SurrealDB Cloud instance, an Anthropic key and (for the full demo) Clerk keys, an Era company and an Agent Memory context. `api/scripts/check_env.py --phase N` lists what is still missing. Without Era, set `TOOLS_BACKEND=fixtures` to use `fixtures/company.json`.
@@ -102,7 +102,7 @@ cd web && npm run dev                                  # http://localhost:3000
 
 Useful scripts (`api/scripts/`): `seed_demo.py` (record the failing run, run the decoy and hero experiments, store the root-cause report), `era_benchmark.py`, `verify_demo.py`, `remember_experiment.py`, `create_workspace_key.py` (mint an ingest key, shown once). Live tests: `RUN_LIVE=1 .venv/bin/pytest`.
 
-Connecting your own agents: sign in, create an organization, open **Connect your agents**, make a key and copy the snippet. Past logs can be imported from the same page (view only). See [sdk/agenttrace_sdk](sdk/agenttrace_sdk) and [record_demo.py](api/scripts/record_demo.py) for a complete example.
+Connecting your own agents: sign in, create an organization, then open **Connect your agents**. There you can add the saved example to your workspace (a real run you can fork at once, no code, no tokens), make a key and copy the snippet, or import past logs (those are view only). See [sdk/agenttrace_sdk](sdk/agenttrace_sdk) and [record_demo.py](api/scripts/record_demo.py) for a complete example.
 
 Recording your own workflow in code:
 

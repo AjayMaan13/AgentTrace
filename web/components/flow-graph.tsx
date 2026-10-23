@@ -71,7 +71,7 @@ function Edge({ edge, byId, tone }: { edge: GEdge; byId: Map<string, GNode>; ton
 function Node({ node: n, selected, onSelect }: { node: GNode; selected: boolean; onSelect: (n: GNode) => void }) {
   const { x, y } = pos(n);
   const ring =
-    n.draft ? "border-dashed border-muted" : n.mark?.kind === "cause" ? "border-bad" : n.mark?.kind === "carried" ? "border-warn" : n.kind === "edited" ? "border-dashed border-ink" : n.kind === "live" ? "border-muted" : "border-line";
+    n.draft ? "border-dashed border-muted" : n.origin === "replayed" ? "border-line" : n.origin === "live" ? "border-muted" : n.mark?.kind === "cause" ? "border-bad" : n.mark?.kind === "carried" ? "border-warn" : n.kind === "edited" ? "border-dashed border-ink" : n.kind === "live" ? "border-muted" : "border-line";
   const fill = n.mark?.kind === "cause" ? "bg-bad-tint" : n.mark?.kind === "carried" ? "bg-warn-tint" : "bg-sheet";
   const label = n.kind === "result"
     ? <span className={`rounded-full border px-3 py-1 text-[0.9375rem] font-medium ${n.tone === "bad" ? "border-bad/40 bg-bad-tint text-bad" : n.tone === "good" ? "border-good/40 bg-good-tint text-good" : "border-line bg-tile text-ink"}`}>{n.label}</span>

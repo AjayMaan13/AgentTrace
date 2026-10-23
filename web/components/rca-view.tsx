@@ -62,8 +62,8 @@ export function RcaView({
           {verification?.status === "done" && (
             <p className="rounded-lg border border-line bg-frame px-4 py-3 text-sm font-medium">
               {report.verdict_idx !== null
-                ? `Confirmed by experiment: the ${agentOf(report.candidates[report.verdict_idx].node_run_idx)} caused it.`
-                : "No suspect passed its experiment, so none is confirmed. The ranking below is still the AI's opinion."}
+                ? `Supported by a small test: fixing the ${agentOf(report.candidates[report.verdict_idx].node_run_idx)} helped (${verification.n} runs each way). That is too few runs to be sure, so treat it as a strong hint.`
+                : "No suspect passed its small test, so none is supported. The ranking below is still the AI's opinion."}
             </p>
           )}
           {verification?.status === "error" && (
@@ -157,7 +157,7 @@ function Suspect({
           {lead ? "Most likely: " : `#${rank} `}
           <span className="capitalize">{agentOf(c.node_run_idx)}</span>
         </h3>
-        {confirmed && <span className="rounded-full bg-good-solid px-2 py-0.5 text-xs font-medium text-white">Confirmed</span>}
+        {confirmed && <span className="rounded-full bg-good-solid px-2 py-0.5 text-xs font-medium text-white">Supported by test</span>}
         <span className="ml-auto text-sm tabular-nums text-muted">{Math.round(c.confidence * 100)}% sure</span>
       </div>
       {c.matches_past_pattern && (

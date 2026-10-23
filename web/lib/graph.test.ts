@@ -96,3 +96,27 @@ test("setting up a fork opens a dashed line at once, before anything runs", () =
 test("a draft for an agent that is not in the run is ignored", () => {
   assert.equal(buildGraph(steps, { draft: { nodeRun: 99 } }).lanes.length, 1);
 });
+
+test("on a fork's own run the line says which agents replayed and which ran live", () => {
+  const forked = [
+    step({ idx: 1, node_run_idx: 1, agent: "planner", origin: "edited", writes: ["k0"], state_after: { k0: 1 } }),
+    step({ idx: 2, node_run_idx: 2, agent: "researcher", origin: "live", writes: ["k1"], state_after: { k0: 1, k1: 1 } }),
+  ];
+  const g = buildGraph(forked, {});
+  assert.deepEqual(g.nodes.filter((n) => n.kind === "agent").map((n) => [n.origin, n.sub]), [
+    ["edited", "your change is applied here"],
+    ["live", "ran live, so it is sampled"],
+  ]);
+  const copied = buildGraph([step({ origin: "replayed", writes: ["k"], state_after: { k: 1 } })], {});
+  assert.equal(copied.nodes.find((n) => n.kind === "agent")!.sub, "replayed exactly from the recording");
+});
+
+test("an ordinary recorded run keeps its plain call counts", () => {
+  assert.equal(buildGraph(steps, {}).nodes.find((n) => n.id === "a1")!.origin, undefined);
+});
+
+test("a long rewritten text is described, not quoted half-way", () => {
+  const long = "The brief has all the required sections and a valid JSON footer.";
+  const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: long } })] });
+  assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "k1 rewritten");
+});

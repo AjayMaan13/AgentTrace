@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { SampleRunButton } from "@/components/sample-run-button";
 import { ApiError, useApi } from "@/lib/api";
 import { useApiData } from "@/lib/use-api-data";
 
@@ -97,6 +98,17 @@ export function Connect() {
   const code = snippet(fresh ?? "YOUR_KEY");
   return (
     <div className="flex flex-col gap-12">
+      <section className="card flex flex-col gap-3 p-5" aria-label="Start with an example">
+        <div>
+          <h2 className="font-serif text-2xl">Want to try forking first?</h2>
+          <p className="mt-1 max-w-[60ch] text-muted">
+            Add a real run that went wrong to this workspace. It is the saved example from the demo. You can open its line, find the
+            cause and fork it straight away. It costs nothing to add, and no code is needed.
+          </p>
+        </div>
+        <SampleRunButton />
+      </section>
+
       <section className="flex flex-col gap-4" aria-label="Make a key">
         <div>
           <h2 className="font-serif text-2xl">1. Make a key</h2>
