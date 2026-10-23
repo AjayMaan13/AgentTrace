@@ -376,6 +376,84 @@ async def list_featured_experiments(workspace: str) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
+# --- audit, caps ------------------------------------------------------------------------------
+
+async def create_audit(workspace: str, doc: dict[str, Any]) -> None:
+    async with connect() as c:
+        await c.query("CREATE audit CONTENT $d", {"d": {**doc, "workspace": workspace}})
+
+
+async def list_audit(workspace: str, limit: int = 100) -> list[dict[str, Any]]:
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM audit WHERE workspace = $ws ORDER BY at DESC LIMIT $n", {"ws": workspace, "n": limit}
+        )
+    return [_row(r) for r in rows]
+
+
+async def count_experiments_since(created_by: str, since_iso: str) -> int:
+    """Experiments a user started at or after `since_iso` (ISO strings sort chronologically)."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT count() AS n FROM experiment WHERE created_by = $u AND created_at >= $since GROUP ALL",
+            {"u": created_by, "since": since_iso},
+        )
+    return rows[0]["n"] if rows else 0
+
+
+# --- deleting a run and everything derived from it -------------------------------------------
+
+async def _delete_runs(c: Any, workspace: str, run_ids: list[str]) -> dict[str, Any]:
+    """Delete these runs and what hangs off them: steps and their edges, experiments run on them,
+    those experiments' tested edges, and root-cause reports. Returns counts and the Agent Memory
+    scopes the experiments had written to (the caller forgets those)."""
+    run_rids = [RecordID("run", r) for r in run_ids]
+    exps = await c.query(
+        "SELECT id, memory_scope FROM experiment WHERE workspace = $ws AND parent_run IN $ids",
+        {"ws": workspace, "ids": run_ids},
+    )
+    exp_rids = [e["id"] for e in exps]
+    count = lambda rows: rows[0]["n"] if rows else 0  # noqa: E731
+    steps = count(await c.query("SELECT count() AS n FROM step WHERE run IN $ids GROUP ALL", {"ids": run_ids}))
+    reports = count(await c.query(
+        "SELECT count() AS n FROM rca_report WHERE workspace = $ws AND run IN $ids GROUP ALL", {"ws": workspace, "ids": run_ids}
+    ))
+
+    await c.query("DELETE tested WHERE in IN $e OR out IN $r", {"e": exp_rids, "r": run_rids})
+    await c.query("DELETE experiment WHERE workspace = $ws AND parent_run IN $ids", {"ws": workspace, "ids": run_ids})
+    await c.query("DELETE rca_report WHERE workspace = $ws AND run IN $ids", {"ws": workspace, "ids": run_ids})
+    for run_id, rid in zip(run_ids, run_rids, strict=True):
+        await c.query("DELETE next WHERE in.run = $r", {"r": run_id})
+        await c.query("DELETE has_step WHERE in = $rid", {"rid": rid})
+        await c.query("DELETE forked_from WHERE in = $rid OR out = $rid", {"rid": rid})
+        await c.query("DELETE step WHERE run = $r", {"r": run_id})
+        await c.query("DELETE $rid", {"rid": rid})
+    return {
+        "runs": len(run_ids), "steps": steps, "experiments": len(exps), "rca_reports": reports,
+        "run_ids": run_ids, "memory_scopes": sorted({e["memory_scope"] for e in exps if e.get("memory_scope")}),
+    }
+
+
+async def delete_run_cascade(workspace: str, run_id: str) -> dict[str, Any] | None:
+    """Delete a run in `workspace` together with every fork of it (and forks of forks) and all
+    derived data. None if the run is not in the workspace."""
+    async with connect() as c:
+        found = await c.query(
+            "SELECT id FROM type::record('run', $id) WHERE workspace = $ws", {"id": run_id, "ws": workspace}
+        )
+        if not found:
+            return None
+        ids, frontier = [run_id], [run_id]
+        while frontier:  # walk down the fork tree
+            rows = await c.query(
+                "SELECT in AS fork FROM forked_from WHERE out IN $outs AND in.workspace = $ws",
+                {"outs": [RecordID("run", r) for r in frontier], "ws": workspace},
+            )
+            frontier = [r["fork"].id for r in rows if r["fork"].id not in ids]
+            ids += frontier
+        return await _delete_runs(c, workspace, ids)
+
+
 # --- test / smoke cleanup --------------------------------------------------------------------
 
 async def purge_workspace(workspace: str) -> None:
@@ -385,15 +463,10 @@ async def purge_workspace(workspace: str) -> None:
         raise ValueError("purge_workspace only deletes throwaway test-* / smoke-* workspaces")
     async with connect() as c:
         runs = await c.query("SELECT VALUE id FROM run WHERE workspace = $ws", {"ws": workspace})
-        for run_rid in runs:
-            r = run_rid.id
-            await c.query("DELETE next WHERE in.run = $r", {"r": r})
-            await c.query("DELETE has_step WHERE in = $rid", {"rid": run_rid})
-            await c.query("DELETE forked_from WHERE in = $rid OR out = $rid", {"rid": run_rid})
-            await c.query("DELETE step WHERE run = $r", {"r": r})
-            await c.query("DELETE $rid", {"rid": run_rid})
-        await c.query("DELETE tested WHERE in.workspace = $ws", {"ws": workspace})
+        if runs:
+            await _delete_runs(c, workspace, [r.id for r in runs])
         await c.query("DELETE experiment WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE rca_report WHERE workspace = $ws", {"ws": workspace})
+        await c.query("DELETE audit WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE api_key WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE type::record('workspace', $ws)", {"ws": workspace})

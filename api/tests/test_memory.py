@@ -30,6 +30,8 @@ class FakeMemory:
         self.log.append(("register", path))
 
     async def _forget_scope(self, path, **kw):
+        if self.fail:
+            raise RuntimeError("memory is down")
         keep = [i for i in self.items if path not in i["scopes"]]
         removed, self.items[:] = len(self.items) - len(keep), keep
         return SimpleNamespace(forgotten=removed)

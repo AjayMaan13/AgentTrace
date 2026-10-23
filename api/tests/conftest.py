@@ -3,6 +3,7 @@ import pytest
 from app import db
 from app.auth import Principal, get_principal
 from app.main import app
+from app.security import limits
 from fakes import DB_FUNCTIONS, FakeDB
 
 
@@ -19,8 +20,15 @@ def store(monkeypatch):
 def login():
     """Act as a signed-in member of an organization (the workspace). Overrides get_principal;
     the real JWT verification is covered by test_auth.py. Not logged in unless called."""
-    def _login(org_id: str = "ws-a", role: str = "member") -> None:
-        app.dependency_overrides[get_principal] = lambda: Principal("user_1", org_id, role)
+    def _login(org_id: str = "ws-a", role: str = "member", user_id: str = "user_1") -> None:
+        app.dependency_overrides[get_principal] = lambda: Principal(user_id, org_id, role)
 
     yield _login
     app.dependency_overrides.pop(get_principal, None)
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    """The limiters are module-level (per process), so each test starts with empty windows."""
+    limits.experiment_limiter._calls.clear()
+    limits.rca_limiter._calls.clear()

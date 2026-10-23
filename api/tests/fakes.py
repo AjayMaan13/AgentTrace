@@ -14,6 +14,8 @@ class FakeDB:
         self.experiments: dict[str, dict[str, Any]] = {}
         self.tested: list[tuple[str, str]] = []
         self.rca_reports: list[dict[str, Any]] = []
+        self.audit: list[dict[str, Any]] = []
+        self.fail_audit = False
 
     async def workspace_for_key_hash(self, h):
         return self.keys.get(h)
@@ -86,6 +88,40 @@ class FakeDB:
                 "tokens_in": sum(s["tokens_in"] for s in steps),
                 "tokens_out": sum(s["tokens_out"] for s in steps)}
 
+    async def create_audit(self, ws, doc):
+        if self.fail_audit:
+            raise RuntimeError("audit store down")
+        self.audit.append({**doc, "workspace": ws})
+
+    async def list_audit(self, ws, limit=100):
+        return sorted((a for a in self.audit if a["workspace"] == ws), key=lambda a: a["at"], reverse=True)[:limit]
+
+    async def count_experiments_since(self, created_by, since_iso):
+        return sum(1 for e in self.experiments.values() if e.get("created_by") == created_by and e["created_at"] >= since_iso)
+
+    async def delete_run_cascade(self, ws, run_id):
+        if not await self.run_exists(ws, run_id):
+            return None
+        ids, frontier = [run_id], [run_id]
+        while frontier:
+            frontier = [f["fork_run"] for f in self.forks if f["parent"] in frontier and f["fork_run"] not in ids]
+            ids += frontier
+        exps = {i: e for i, e in self.experiments.items() if e["workspace"] == ws and e["parent_run"] in ids}
+        steps = [k for k in self.steps if k[0] in ids]
+        reports = [r for r in self.rca_reports if r["workspace"] == ws and r["run"] in ids]
+        out = {"runs": len(ids), "steps": len(steps), "experiments": len(exps), "rca_reports": len(reports),
+               "run_ids": ids, "memory_scopes": sorted({e["memory_scope"] for e in exps.values() if e.get("memory_scope")})}
+        for k in steps:
+            del self.steps[k]
+        for i in exps:
+            del self.experiments[i]
+        self.tested = [t for t in self.tested if t[0] not in exps and t[1] not in ids]
+        self.forks = [f for f in self.forks if f["fork_run"] not in ids and f["parent"] not in ids]
+        self.rca_reports = [r for r in self.rca_reports if r not in reports]
+        for r in ids:
+            del self.runs[r]
+        return out
+
     async def list_memory_scopes(self, ws, limit=50):
         return list(dict.fromkeys(e["memory_scope"] for e in self.experiments.values()
                                   if e["workspace"] == ws and e.get("remembered") and e.get("memory_scope")))
@@ -121,4 +157,5 @@ DB_FUNCTIONS = ("workspace_for_key_hash", "create_run", "run_exists", "add_steps
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
                 "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",
-                "get_featured_run_id", "list_featured_experiments", "list_memory_scopes")
+                "get_featured_run_id", "list_featured_experiments", "list_memory_scopes", "create_audit", "list_audit",
+                "count_experiments_since", "delete_run_cascade")

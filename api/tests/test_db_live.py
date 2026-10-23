@@ -129,3 +129,57 @@ def test_end_to_end_ingest_over_http_with_a_real_key(ws, request):
 
     got = client.get(f"/v1/runs/{rid}").json()
     assert [s["idx"] for s in got["steps"]] == [1, 2] and got["outcome"] == "fail"
+
+
+def test_delete_run_cascade_removes_the_run_its_forks_and_everything_derived(ws):
+    other_ws = f"{ws}-other"
+    parent, fork, nested, keep, foreign = (new_id() for _ in range(5))
+    for rid, w in ((parent, ws), (fork, ws), (nested, ws), (keep, ws), (foreign, other_ws)):
+        run(db.create_run(w, rid, "w", "2026-01-01T00:00:00+00:00"))
+        run(db.add_steps(w, rid, [step(rid, 1), step(rid, 2)]))
+    run(db.create_fork_edge(ws, fork, parent, 1, "treatment"))
+    run(db.create_fork_edge(ws, nested, fork, 1, "control"))  # a fork of a fork
+    exp_id = new_id()
+    run(db.create_experiment(ws, exp_id, {"parent_run": parent, "remembered": True, "memory_scope": "ws/x/workflow/w/run/p",
+                                          "finished_at": "2026-01-01T00:00:00+00:00"}))
+    run(db.create_tested_edge(exp_id, fork))
+    run(db.create_rca_report(ws, new_id(), {"run": parent, "created_at": "2026-01-01T00:00:00+00:00"}))
+
+    assert run(db.delete_run_cascade(other_ws, parent)) is None  # another workspace cannot reach it
+    assert run(db.get_run_with_steps(ws, parent)) is not None
+
+    result = run(db.delete_run_cascade(ws, parent))
+    assert (result["runs"], result["steps"], result["experiments"], result["rca_reports"]) == (3, 6, 1, 1)
+    assert result["memory_scopes"] == ["ws/x/workflow/w/run/p"]
+
+    for gone in (parent, fork, nested):
+        assert run(db.get_run_with_steps(ws, gone)) is None
+    assert len(run(db.get_run_with_steps(ws, keep))["steps"]) == 2  # unrelated run untouched
+    assert len(run(db.get_run_with_steps(other_ws, foreign))["steps"]) == 2
+
+    async def leftovers():
+        async with db.connect() as c:
+            q = lambda sql, **v: c.query(sql, v)  # noqa: E731
+            return [
+                await q("SELECT id FROM experiment WHERE workspace = $ws", ws=ws),
+                await q("SELECT id FROM rca_report WHERE workspace = $ws", ws=ws),
+                await q("SELECT id FROM tested WHERE in = type::record('experiment', $e)", e=exp_id),
+                await q("SELECT id FROM forked_from WHERE in.workspace = $ws", ws=ws),
+                await q("SELECT id FROM step WHERE run IN $ids", ids=[parent, fork, nested]),
+            ]
+
+    assert [len(x) for x in run(leftovers())] == [0, 0, 0, 0, 0]
+    run(db.purge_workspace(other_ws))
+
+
+def test_audit_records_and_the_daily_experiment_count_work_against_the_real_database(ws):
+    run(db.create_audit(ws, {"actor": "u1", "action": "run.delete", "target": "r1", "detail": {}, "at": "2026-01-02T00:00:00+00:00"}))
+    run(db.create_audit(ws, {"actor": "u1", "action": "experiment.launch", "target": "e1", "detail": {}, "at": "2026-01-03T00:00:00+00:00"}))
+    assert [a["action"] for a in run(db.list_audit(ws))] == ["experiment.launch", "run.delete"]
+    assert run(db.list_audit("test-someone-else")) == []
+
+    user = f"user-{uuid.uuid4().hex[:6]}"
+    for i, when in enumerate(["2026-01-01T10:00:00+00:00", "2026-01-02T01:00:00+00:00", "2026-01-02T23:00:00+00:00"]):
+        run(db.create_experiment(ws, new_id(), {"created_by": user, "created_at": when, "parent_run": "x"}))
+    assert run(db.count_experiments_since(user, "2026-01-02T00:00:00+00:00")) == 2
+    assert run(db.count_experiments_since(user, "2026-01-03T00:00:00+00:00")) == 0

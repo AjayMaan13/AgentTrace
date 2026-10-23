@@ -174,3 +174,24 @@ async def forget_run(workspace: str, workflow: str, run_id: str) -> int:
         return 0
     finally:
         await mem.close()
+
+
+async def forget_scopes(scopes: list[str]) -> tuple[int, int]:
+    """Forget these scopes entirely (a deleted run's remembered patterns). Returns (items removed,
+    scopes that could not be forgotten): the caller records a failure instead of hiding it."""
+    if not scopes:
+        return 0, 0
+    mem = _open()
+    if mem is None:
+        return 0, len(scopes)
+    removed = failed = 0
+    try:
+        for scope in scopes:
+            try:
+                removed += (await mem.scopes.forget(scope)).forgotten
+            except Exception as exc:
+                failed += 1
+                log.warning("agent memory forget failed: %s", type(exc).__name__)
+    finally:
+        await mem.close()
+    return removed, failed

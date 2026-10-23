@@ -1,15 +1,23 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import db
 from app.config import get_settings
-from app.routes import experiments, ingest, public, rca, runs
+from app.routes import audit, experiments, ingest, public, rca, runs
+from app.security.limits import MAX_BODY_BYTES
 
 settings = get_settings()
 
-app = FastAPI(title="AgentTrace API", version="0.0.1")
+# In production the interactive API docs are off: nothing needs them there.
+_prod = settings.env == "prod"
+app = FastAPI(
+    title="AgentTrace API", version="0.0.1",
+    docs_url=None if _prod else "/docs", redoc_url=None if _prod else "/redoc",
+    openapi_url=None if _prod else "/openapi.json",
+)
 
 # Bearer tokens travel in the Authorization header, not cookies, so no credentialed CORS.
 app.add_middleware(
@@ -24,6 +32,17 @@ app.include_router(runs.router)
 app.include_router(experiments.router)
 app.include_router(rca.router)
 app.include_router(public.router)
+app.include_router(audit.router)
+
+
+@app.middleware("http")
+async def limit_body_size(request: Request, call_next):
+    """Refuse oversized bodies early. Covers requests that declare a Content-Length; a hostile
+    client that streams without one is a gap a reverse proxy limit would close (see SECURITY.md)."""
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > MAX_BODY_BYTES:
+        return JSONResponse({"detail": "Request body too large"}, status_code=413)
+    return await call_next(request)
 
 
 @app.get("/health")

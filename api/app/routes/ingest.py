@@ -1,5 +1,6 @@
 """SDK -> API. Authenticated by a per-workspace ingest key; every call is scoped to that
-key's workspace. Safe to retry: run creation and step insertion are idempotent."""
+key's workspace. Safe to retry: run creation and step insertion are idempotent. Payloads are
+redacted again here and clamped to 32 KB per text field."""
 
 from typing import Any
 
@@ -8,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app import db
 from app.auth import ingest_workspace
 from app.models import RunCreate, RunFinish, Step, StepBatch
+from app.security.limits import clamp_strings
 from agenttrace_sdk import redact
 
 router = APIRouter(prefix="/v1")
@@ -18,6 +20,7 @@ def _prepare(step: Step, run_id: str) -> dict[str, Any]:
     doc = step.model_dump()
     earlier = doc.pop("redactions")
     clean, found = redact(doc)
+    clean = clamp_strings(clean)  # no stored text field is longer than 32 KB
     clean["run"] = run_id
     clean["redactions"] = earlier + found
     return clean

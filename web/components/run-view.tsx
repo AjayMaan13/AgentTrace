@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DeleteRun } from "@/components/delete-run";
 import { ForkPanel } from "@/components/fork-panel";
 import { Inspector } from "@/components/inspector";
 import { Lanes } from "@/components/lanes";
@@ -50,6 +51,7 @@ export function RunView({
           {formatTokens((run.tokens_in ?? 0) + (run.tokens_out ?? 0))} tokens
         </p>
         {run.oracle_detail && <Oracle detail={run.oracle_detail} outcome={run.outcome} />}
+        {mode === "app" && <DeleteRun runId={run.id} />}
       </header>
 
       <Lanes steps={run.steps} selected={selected} onSelect={setSelected} />

@@ -32,6 +32,19 @@ def is_set(alternatives: list[str]) -> bool:
     return any(os.environ.get(n, "").strip() for n in alternatives)
 
 
+def weak_credential_warnings() -> list[str]:
+    """Credentials that would pass as 'set' but are guessable. Names only, never values."""
+    warnings = []
+    password, user = os.environ.get("SURREAL_PASS", ""), os.environ.get("SURREAL_USER", "")
+    if password:
+        same_as = [n for n in ("SURREAL_USER", "SURREAL_NS", "SURREAL_DB") if os.environ.get(n) == password]
+        if same_as:
+            warnings.append(f"SURREAL_PASS is the same as {', '.join(same_as)}: anyone who finds the database URL can guess it")
+        if len(password) < 12:
+            warnings.append(f"SURREAL_PASS is only {len(password)} characters: use a long random one (at least 16)")
+    return warnings
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--phase", type=int, help="only this phase")
@@ -49,6 +62,8 @@ def main() -> int:
                 label = " or ".join(alts) if len(alts) > 1 else alts[0]
                 print(f"  [{'x' if ok else ' '}] {group}: {label}")
     print(f"\n{missing_total} missing")
+    for warning in weak_credential_warnings():
+        print(f"WARNING: {warning}")
     return 1 if missing_total else 0
 
 
