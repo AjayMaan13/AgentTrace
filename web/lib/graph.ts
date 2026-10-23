@@ -1,4 +1,6 @@
-import { agentCards, callsLabel, type Mark } from "./story.ts";
+import { diffState } from "./diff.ts";
+import { nodeRuns } from "./runs.ts";
+import { agentCards, brief, callsLabel, type Mark } from "./story.ts";
 import { verdictFor } from "./verdict.ts";
 import type { Experiment, Step } from "./types";
 
@@ -25,6 +27,7 @@ export type GNode = {
   tone: Tone;
   nodeRun?: number; // which agent run this is, for the original line
   experiment?: string; // which fork a branch node belongs to
+  change?: string[]; // on an edited node: each value that was changed, "name: before → after"
 };
 
 export type GEdge = { id: string; from: string; to: string; kind: "line" | "spawn"; lane: number };
@@ -66,8 +69,9 @@ export function buildGraph(
     const tone: Tone = !done || !verdict ? "neutral" : verdict.tone === "good" ? "good" : verdict.tone === "bad" ? "bad" : "neutral";
     lanes.push({ index: lane, label: `Fork ${k + 1}: ${agent} changed`, experiment: e.id, tone });
 
+    const change = describeEdit(steps, e.fork_node_run_idx, e.edit_patch);
     const branch: GNode[] = [
-      { id: `${e.id}:edit`, lane, col: forkAt + 1, kind: "edited", label: agent, sub: "with your change", tone: "neutral", experiment: e.id },
+      { id: `${e.id}:edit`, lane, col: forkAt + 1, kind: "edited", label: agent, sub: change.short ?? "with your change", tone: "neutral", experiment: e.id, change: change.lines },
     ];
     cards.slice(forkAt + 1).forEach((c, j) => {
       branch.push({
@@ -90,6 +94,20 @@ export function buildGraph(
     lanes, nodes, edges, cols: end + 1,
     width: PAD_X * 2 + (end + 1) * COL_W, height: PAD_Y * 2 + lanes.length * LANE_H - (LANE_H - 96),
   };
+}
+
+/** What a fork changed, in words: each value that differs from the recording, before and after. */
+export function describeEdit(steps: Step[], nodeRun: number, patch: Record<string, unknown>): { lines: string[]; short: string | null } {
+  const after = nodeRuns(steps).find((r) => r.idx === nodeRun)?.stateAfter ?? {};
+  const before = Object.fromEntries(Object.keys(patch).map((k) => [k, after[k]]));
+  const changes = diffState(before, patch);
+  const leaf = (path: string) => path.split(".").slice(-1)[0];
+  const lines = changes.map((c) => `${c.path}: ${c.kind === "added" ? "nothing" : brief(c.before, 60)} → ${c.kind === "removed" ? "nothing" : brief(c.after, 60)}`);
+  const first = changes[0];
+  const short = first
+    ? `${leaf(first.path)}: ${first.kind === "added" ? "nothing" : brief(first.before, 16)} → ${first.kind === "removed" ? "nothing" : brief(first.after, 16)}${changes.length > 1 ? ` (+${changes.length - 1})` : ""}`
+    : null;
+  return { lines, short };
 }
 
 function chain(edges: GEdge[], line: GNode[], lane: number) {

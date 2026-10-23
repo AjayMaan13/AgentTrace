@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { BenchmarkTable } from "@/components/benchmark-table";
 import { Checks } from "@/components/checks";
@@ -31,15 +32,17 @@ export function RunView({
 
 /** The signed-in run: its forks are read from the API, and polled while any is still running. */
 function AppRun({ run, titleLevel }: { run: Run; titleLevel: 1 | 2 }) {
+  const fork = useSearchParams().get("fork"); // the project timeline links here with a fork to show
   const [tick, setTick] = useState(0); // bumping it asks for the list again, right after a fork starts
   const state = useApiData<Experiment[]>(`/v1/runs/${run.id}/experiments?k=${tick}`, (list) => (list.some((e) => !isFinished(e)) ? 1500 : null));
   const experiments = state.status === "ok" ? state.data : [];
-  return <RunBody run={run} mode="app" report={null} experiments={experiments} titleLevel={titleLevel} onForked={() => setTick((t) => t + 1)} />;
+  return <RunBody run={run} mode="app" report={null} experiments={experiments} titleLevel={titleLevel} onForked={() => setTick((t) => t + 1)} initialSelected={fork ? `${fork}:end` : null} />;
 }
 
 function RunBody({
-  run, mode, report, experiments, titleLevel, onForked, extra = null,
+  run, mode, report, experiments, titleLevel, onForked, extra = null, initialSelected = null,
 }: {
+  initialSelected?: string | null;
   run: Run; mode: "app" | "demo"; report: RcaReport | null; experiments: Experiment[]; titleLevel: 1 | 2;
   onForked?: (experimentId: string) => void; extra?: React.ReactNode;
 }) {
@@ -48,7 +51,7 @@ function RunBody({
   const [saved, setSaved] = useState<RcaReport | null>(null); // what the signed-in RCA panel loaded
   const known = report ?? saved;
   const marks = useMemo(() => marksFromReport(known), [known]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialSelected);
   const [fix, setFix] = useState<{ nodeRunIdx: number; patch: State; nonce: number } | null>(null);
 
   const failed = run.outcome === "fail" || run.outcome === "error";
@@ -72,6 +75,7 @@ function RunBody({
   function testCandidate(c: Candidate) {
     if (c.proposed_edit) startFork(c.node_run_idx, c.proposed_edit.patch);
   }
+  const canFork = mode === "app" && run.forkable !== false;
   const benchmark = experiments.find((e) => e.benchmark)?.benchmark ?? null;
 
   return (
@@ -106,11 +110,19 @@ function RunBody({
           node={node} run={run} report={known} experiments={experiments} mode={mode}
           runHref={(id) => (mode === "demo" ? `/demo/runs/${id}` : `/runs/${id}`)}
           experimentHref={(id) => (mode === "demo" ? null : `/experiments/${id}`)}
-          onFork={(n) => startFork(n)}
+          onFork={(n) => startFork(n)} canFork={canFork}
         />
       </section>
 
-      {mode === "app" ? (
+      {mode === "app" && !canFork ? (
+        <section className="card p-5">
+          <h2 className="font-serif text-xl">This run is view only</h2>
+          <p className="mt-1 max-w-[60ch] text-muted">
+            You can read every step on the line above. Forking and finding the cause run your agents again, so they need this
+            workflow connected to a replay worker. That is not available yet, so runs you record or import yourself stay view only.
+          </p>
+        </section>
+      ) : mode === "app" ? (
         <>
           <RcaPanel run={run} onTest={testCandidate} onReport={setSaved} />
           <TestFixPanel

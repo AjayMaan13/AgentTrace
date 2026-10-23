@@ -124,8 +124,28 @@ async def create_api_key(workspace: str, prefix: str, sha256: str, created_by: s
     async with connect() as c:
         await c.query(
             "CREATE api_key CONTENT $d",
-            {"d": {"workspace": workspace, "prefix": prefix, "sha256": sha256, "created_by": created_by}},
+            {"d": {"workspace": workspace, "prefix": prefix, "sha256": sha256, "created_by": created_by,
+                   "created_at": _now()}},
         )
+
+
+async def list_api_keys(workspace: str) -> list[dict[str, Any]]:
+    """A workspace's ingest keys, newest first. Only the display prefix is ever stored or returned."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT id, prefix, created_by, created_at, revoked_at FROM api_key WHERE workspace = $ws "
+            "ORDER BY created_at DESC", {"ws": workspace},
+        )
+    return [_row(r) for r in rows]
+
+
+async def revoke_api_key(workspace: str, key_id: str) -> bool:
+    async with connect() as c:
+        rows = await c.query(
+            "UPDATE type::record('api_key', $id) SET revoked_at = $now WHERE workspace = $ws AND revoked_at = NONE RETURN AFTER",
+            {"id": key_id, "ws": workspace, "now": _now()},
+        )
+    return bool(rows)
 
 
 async def workspace_for_key_hash(sha256: str) -> str | None:
@@ -399,6 +419,16 @@ async def list_featured_experiments(workspace: str) -> list[dict[str, Any]]:
     async with connect() as c:
         rows = await c.query(
             "SELECT * FROM experiment WHERE workspace = $ws AND featured = true", {"ws": workspace}
+        )
+    return [_row(r) for r in rows]
+
+
+async def list_experiments(workspace: str, limit: int = 200) -> list[dict[str, Any]]:
+    """Every experiment in the workspace, oldest first: the forks on the project timeline."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM experiment WHERE workspace = $ws ORDER BY created_at ASC LIMIT $n",
+            {"ws": workspace, "n": limit},
         )
     return [_row(r) for r in rows]
 

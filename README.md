@@ -102,7 +102,9 @@ cd web && npm run dev                                  # http://localhost:3000
 
 Useful scripts (`api/scripts/`): `seed_demo.py` (record the failing run, run the decoy and hero experiments, store the root-cause report), `era_benchmark.py`, `verify_demo.py`, `remember_experiment.py`, `create_workspace_key.py` (mint an ingest key, shown once). Live tests: `RUN_LIVE=1 .venv/bin/pytest`.
 
-Recording your own workflow:
+Connecting your own agents: sign in, create an organization, open **Connect your agents**, make a key and copy the snippet. Past logs can be imported from the same page (view only). See [sdk/agenttrace_sdk](sdk/agenttrace_sdk) and [record_demo.py](api/scripts/record_demo.py) for a complete example.
+
+Recording your own workflow in code:
 
 ```python
 from agenttrace_sdk import trace_run, node, tool, TracedLLM, HttpSink

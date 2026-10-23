@@ -47,6 +47,12 @@ async def start_experiment(
     return {"id": experiment_id}
 
 
+@router.get("/experiments")
+async def list_experiments(workspace: str = Depends(read_workspace)) -> list[dict[str, Any]]:
+    """Every fork in the workspace, for the project timeline."""
+    return [view(e) for e in await db.list_experiments(workspace)]
+
+
 @router.get("/experiments/{experiment_id}")
 async def get_experiment(experiment_id: str, workspace: str = Depends(read_workspace)) -> dict[str, Any]:
     doc = await db.get_experiment(workspace, experiment_id)

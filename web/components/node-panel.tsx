@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Checks } from "@/components/checks";
 import { TileCell } from "@/components/experiment-view";
 import { Inspector } from "@/components/inspector";
+import { nodeRuns } from "@/lib/runs";
 import { JsonBlock } from "@/components/json-block";
 import type { GNode } from "@/lib/graph";
 import type { Candidate, Experiment, RcaReport, Run } from "@/lib/types";
@@ -14,8 +15,9 @@ import { verdictFor } from "@/lib/verdict";
 /** What the selected node is. Everything on the line opens here: the request, an agent, a change, the
  * runs that followed it, and the answer. */
 export function NodePanel({
-  node, run, report, experiments, mode, runHref, experimentHref, onFork,
+  node, run, report, experiments, mode, runHref, experimentHref, onFork, canFork = true,
 }: {
+  canFork?: boolean; // false for imported runs: they can be read, not forked
   node: GNode | null;
   run: Run;
   report: RcaReport | null;
@@ -36,7 +38,7 @@ export function NodePanel({
   return (
     <section className="card p-5" aria-live="polite" aria-label={`Details: ${node.label}`}>
       {node.kind === "start" && <Request run={run} />}
-      {node.kind === "agent" && <AgentDetail node={node} run={run} report={report} mode={mode} onFork={onFork} />}
+      {node.kind === "agent" && <AgentDetail node={node} run={run} report={report} mode={mode} onFork={onFork} canFork={canFork} />}
       {node.kind === "edited" && exp && <Edited exp={exp} node={node} href={experimentHref(exp.id)} />}
       {node.kind === "live" && exp && <Live exp={exp} node={node} runHref={runHref} />}
       {node.kind === "result" && !exp && <Answer run={run} />}
@@ -59,8 +61,8 @@ function Request({ run }: { run: Run }) {
 }
 
 function AgentDetail({
-  node, run, report, mode, onFork,
-}: { node: GNode; run: Run; report: RcaReport | null; mode: "app" | "demo"; onFork: (nodeRun: number) => void }) {
+  node, run, report, mode, onFork, canFork,
+}: { node: GNode; run: Run; report: RcaReport | null; mode: "app" | "demo"; onFork: (nodeRun: number) => void; canFork: boolean }) {
   const steps = run.steps.filter((s) => s.node_run_idx === node.nodeRun).sort((a, b) => a.idx - b.idx);
   const [pick, setPick] = useState(0);
   const step = steps[Math.min(pick, steps.length - 1)];
@@ -70,9 +72,11 @@ function AgentDetail({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-serif text-xl capitalize">{node.label}</h3>
-          <p className="text-muted">{node.sub}. It ran after the agent before it finished, not at the same time.</p>
+          <p className="text-muted">{where(run, node.nodeRun)}</p>
         </div>
-        {mode === "app" ? (
+        {mode === "app" && !canFork ? (
+          <span className="rounded-full border border-line px-3 py-1 text-muted">View only</span>
+        ) : mode === "app" ? (
           <button type="button" className="btn btn-primary" onClick={() => onFork(node.nodeRun ?? 0)}>
             Fork here
           </button>
@@ -106,15 +110,32 @@ function AgentDetail({
   );
 }
 
+/** "Agent 2 of 4. It started after the planner finished." */
+function where(run: Run, nodeRun?: number): string {
+  const turns = nodeRuns(run.steps);
+  const i = turns.findIndex((t) => t.idx === nodeRun);
+  if (i < 0) return "";
+  const calls = turns[i].steps.length;
+  return `Agent ${i + 1} of ${turns.length}. ${i === 0 ? "It ran first." : `It started after the ${turns[i - 1].agent} finished.`} ${calls} step${calls === 1 ? "" : "s"}.`;
+}
+
 function Edited({ exp, node, href }: { exp: Experiment; node: GNode; href: string | null }) {
   return (
     <>
-      <h3 className="font-serif text-xl capitalize">{node.label}, with your change</h3>
+      <h3 className="font-serif text-xl"><span className="capitalize">{node.label}</span>, with your change</h3>
       <p className="mt-1 max-w-prose text-muted">
         This fork replaced what the {node.label} wrote with the value below. Everything before it replays exactly from the
         recording. Everything after it runs live.
       </p>
-      <div className="mt-3"><JsonBlock label="The value it was given instead" value={exp.edit_patch} /></div>
+      {node.change && node.change.length > 0 ? (
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {node.change.map((l) => (
+            <li key={l} className="rounded-lg bg-tile px-3 py-2"><code className="font-mono text-[0.8125rem] [overflow-wrap:anywhere]">{l}</code></li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-3"><JsonBlock label="The value it was given instead" value={exp.edit_patch} /></div>
+      )}
       {href && <Link href={href} className="mt-3 inline-block underline underline-offset-4">Open the full experiment</Link>}
     </>
   );
@@ -123,7 +144,7 @@ function Edited({ exp, node, href }: { exp: Experiment; node: GNode; href: strin
 function Live({ exp, node, runHref }: { exp: Experiment; node: GNode; runHref: (id: string) => string }) {
   return (
     <>
-      <h3 className="font-serif text-xl capitalize">{node.label}, run again live</h3>
+      <h3 className="font-serif text-xl"><span className="capitalize">{node.label}</span>, run again live</h3>
       <p className="mt-1 max-w-prose text-muted">
         In this fork the {node.label} ran again {exp.n} times with the change and {exp.n} times without it, against Claude.
         Live runs are sampled, so they can differ from each other. Open any run below to see exactly what happened in it.

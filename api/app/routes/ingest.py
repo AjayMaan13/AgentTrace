@@ -15,7 +15,7 @@ from agenttrace_sdk import redact
 router = APIRouter(prefix="/v1")
 
 
-def _prepare(step: Step, run_id: str) -> dict[str, Any]:
+def prepare_step(step: Step, run_id: str) -> dict[str, Any]:
     """Re-redact (the SDK may be misconfigured) and pin the step to the run in the URL."""
     doc = step.model_dump()
     earlier = doc.pop("redactions")
@@ -41,7 +41,7 @@ async def add_steps(
 ) -> dict[str, int]:
     if not await db.run_exists(workspace, run_id):
         raise HTTPException(status_code=404, detail="Run not found")
-    steps = [_prepare(s, run_id) for s in body.steps]
+    steps = [prepare_step(s, run_id) for s in body.steps]
     return {"received": len(steps), "added": await db.add_steps(workspace, run_id, steps)}
 
 

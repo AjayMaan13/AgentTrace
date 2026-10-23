@@ -48,7 +48,7 @@ async def demo(response: Response) -> dict[str, Any]:
             await db.list_featured_experiments(workspace), key=lambda e: _ROLE_ORDER.get(e.get("demo_role"), 9)
         )
         return {
-            "run": run,
+            "run": {**run, "forkable": False},  # the public example is read only
             "rca": report_view(report) if report else None,
             "experiments": [
                 {"role": e.get("demo_role"), **view(e),

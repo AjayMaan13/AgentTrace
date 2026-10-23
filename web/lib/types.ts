@@ -48,7 +48,7 @@ export type OracleDetail = {
   critic_loop_ok?: boolean;
 };
 
-export type Run = RunSummary & { oracle_detail?: OracleDetail; steps: Step[] };
+export type Run = RunSummary & { oracle_detail?: OracleDetail; steps: Step[]; forkable?: boolean }; // forkable: false = view only
 
 export type Tile = {
   arm: "control" | "treatment";
@@ -90,6 +90,7 @@ export type Experiment = {
   token_ceiling: number;
   error: string | null;
   benchmark?: Benchmark | null; // present once a benchmark has been stored for this experiment
+  created_at?: string | null; // when the fork was started
 };
 
 export type Candidate = {

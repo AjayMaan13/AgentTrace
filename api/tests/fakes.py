@@ -17,9 +17,35 @@ class FakeDB:
         self.audit: list[dict[str, Any]] = []
         self.benchmarks: list[dict[str, Any]] = []
         self.fail_audit = False
+        self.api_keys: list[dict[str, Any]] = []
 
     async def workspace_for_key_hash(self, h):
+        if any(k["sha256"] == h and k.get("revoked_at") for k in self.api_keys):
+            return None
         return self.keys.get(h)
+
+    async def upsert_workspace(self, ws, name):
+        return None
+
+    async def create_api_key(self, ws, prefix, sha256, created_by):
+        self.keys[sha256] = ws
+        self.api_keys.append({"id": f"k{len(self.api_keys) + 1}", "workspace": ws, "prefix": prefix, "sha256": sha256,
+                              "created_by": created_by, "created_at": f"2026-01-01T00:00:{len(self.api_keys):02d}"})
+
+    async def list_api_keys(self, ws):
+        return [{k: v for k, v in key.items() if k not in ("sha256", "workspace")}
+                for key in reversed(self.api_keys) if key["workspace"] == ws]
+
+    async def revoke_api_key(self, ws, key_id):
+        for key in self.api_keys:
+            if key["id"] == key_id and key["workspace"] == ws and not key.get("revoked_at"):
+                key["revoked_at"] = "now"
+                return True
+        return False
+
+    async def list_experiments(self, ws, limit=200):
+        return sorted((e for e in self.experiments.values() if e["workspace"] == ws),
+                      key=lambda e: e.get("created_at", ""))[:limit]
 
     async def create_run(self, ws, run_id, workflow, started_at, kind="recorded"):
         if run_id in self.runs:
@@ -171,7 +197,7 @@ class FakeDB:
         return max(mine, key=lambda r: r["created_at"]) if mine else None
 
 
-DB_FUNCTIONS = ("workspace_for_key_hash", "create_run", "run_exists", "add_steps", "finish_run",
+DB_FUNCTIONS = ("upsert_workspace", "create_api_key", "list_api_keys", "revoke_api_key", "list_experiments", "workspace_for_key_hash", "create_run", "run_exists", "add_steps", "finish_run",
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
                 "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",

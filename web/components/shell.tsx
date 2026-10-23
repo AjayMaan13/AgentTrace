@@ -9,19 +9,31 @@ import { NavLinks } from "@/components/nav-links";
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col lg:flex-row">
-      <aside className="flex flex-none flex-col gap-4 border-b border-line px-4 py-3 lg:w-60 lg:border-b-0 lg:border-r lg:py-5">
+      <aside className="flex min-w-0 flex-none flex-col gap-4 overflow-hidden border-b border-line px-3 py-3 lg:w-60 lg:border-b-0 lg:border-r lg:py-5">
         <div className="flex items-center justify-between">
           <Brand />
         </div>
         <Suspense>
-          <div className="flex flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-4">
             <Show when="signed-in">
               {/* Organizations are workspaces, so a personal account is not offered. */}
-              <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/runs" />
+              <OrganizationSwitcher
+                hidePersonal
+                afterSelectOrganizationUrl="/runs"
+                appearance={{
+                  elements: {
+                    rootBox: "w-full min-w-0",
+                    organizationSwitcherTrigger: "w-full min-w-0 justify-between",
+                    organizationPreview: "min-w-0",
+                    organizationPreviewTextContainer: "min-w-0",
+                    organizationPreviewMainIdentifier: "truncate",
+                  },
+                }}
+              />
             </Show>
             <nav aria-label="Main">
               <Show when="signed-in">
-                <NavLinks items={[{ href: "/runs", label: "Runs" }, { href: "/demo", label: "Saved example" }]} />
+                <NavLinks items={[{ href: "/runs", label: "Runs" }, { href: "/connect", label: "Connect your agents" }, { href: "/demo", label: "Saved example" }]} />
               </Show>
               <Show when="signed-out">
                 <NavLinks items={[{ href: "/demo", label: "Saved example" }]} />

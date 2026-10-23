@@ -85,3 +85,8 @@ async def enforce_daily_cap(user_id: str, now: datetime | None = None, needed: i
             detail=f"Daily experiment limit reached ({cap} per user per day, resetting at 00:00 UTC). "
                    f"The saved demo results are always available without a limit.",
         )
+
+
+# Minting keys and importing runs are cheap, but not free: a few a minute per person is plenty.
+key_limiter = SlidingWindowLimiter(5, 60)
+import_limiter = SlidingWindowLimiter(20, 60)

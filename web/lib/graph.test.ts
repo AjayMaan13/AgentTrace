@@ -71,3 +71,15 @@ test("positions grow to the right with the column and down with the lane", () =>
   assert.ok(pos({ lane: 0, col: 2 }).x > pos({ lane: 0, col: 1 }).x);
   assert.ok(pos({ lane: 1, col: 1 }).y > pos({ lane: 0, col: 1 }).y);
 });
+
+test("the edited node shows what was changed, before and after", () => {
+  const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: "new" } })] });
+  const edited = g.nodes.find((n) => n.id === "e1:edit")!;
+  assert.equal(edited.sub, "k1: 1 → new");
+  assert.deepEqual(edited.change, ["k1: 1 → new"]);
+});
+
+test("an edit that changes nothing falls back to plain words", () => {
+  const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: 1 } })] });
+  assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "with your change");
+});

@@ -33,6 +33,8 @@ def fresh_rate_limits():
     """The limiters are module-level (per process), so each test starts with empty windows."""
     limits.experiment_limiter._calls.clear()
     limits.rca_limiter._calls.clear()
+    limits.key_limiter._calls.clear()
+    limits.import_limiter._calls.clear()
 
 
 @pytest.fixture(autouse=True)

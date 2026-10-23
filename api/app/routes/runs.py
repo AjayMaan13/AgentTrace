@@ -9,6 +9,7 @@ from app.auth import Principal, get_principal, read_workspace
 from app.experiments.runner import view as experiment_view
 from app.rca.memory import forget_scopes
 from app.security import audit
+from app.workflows.registry import REGISTRY
 
 router = APIRouter(prefix="/v1")
 
@@ -25,7 +26,8 @@ async def get_run(run_id: str, workspace: str = Depends(read_workspace)) -> dict
     run = await db.get_run_with_steps(workspace, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    return run
+    # Forking and root-cause analysis re-run the workflow's own code, so they need it registered here.
+    return {**run, "forkable": run["workflow"] in REGISTRY}
 
 
 @router.get("/runs/{run_id}/experiments")

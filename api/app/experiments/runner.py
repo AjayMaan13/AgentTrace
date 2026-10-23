@@ -58,7 +58,7 @@ def view(doc: dict[str, Any]) -> dict[str, Any]:
         "control": doc["control"], "treatment": doc["treatment"], "tiles": tiles,
         "stats": doc.get("stats") or _stats(doc),
         "tokens_used": doc["tokens_used"], "token_ceiling": doc["token_ceiling"],
-        "error": doc.get("error"),
+        "error": doc.get("error"), "created_at": doc.get("created_at"),
     }
 
 
