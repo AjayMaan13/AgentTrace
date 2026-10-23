@@ -60,3 +60,18 @@ export function marksFromReport(report: RcaReport | null): Map<number, Mark> {
   marks.set(top.node_run_idx, { kind: "cause", confidence: top.confidence });
   return marks;
 }
+
+/** What an agent does, in the words of its own instructions: the first sentence after "You are the ...
+ * agent", skipping sentences that describe its input. Null when the instructions were not recorded. */
+export function taskOf(steps: Step[]): string | null {
+  for (const step of steps) {
+    const system = (step.input as { system?: unknown } | null)?.system;
+    if (step.kind !== "llm" || typeof system !== "string") continue;
+    const sentences = system.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/).slice(1);
+    const task = sentences.find((t) => t.length > 8 && !/^(You |Reply|Return|Output|Use only|Do not)/.test(t));
+    if (!task) continue;
+    const head = task.split(":")[0].replace(/[.!?]+$/, "").trim();
+    return head.length <= 72 ? head : `${head.slice(0, 71).replace(/\s+\S*$/, "")}…`;
+  }
+  return null;
+}

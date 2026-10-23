@@ -19,9 +19,9 @@ export function TestFixPanel({
 }: { run: Run; request?: { nodeRunIdx: number; patch: State } | null; onLaunched: (experimentId: string) => void; baseLabel?: string }) {
   const api = useApi();
   const forkable = useMemo(() => nodeRuns(run.steps).filter((r) => r.stateAfter && r.writes.length > 0), [run.steps]);
-  const start = forkable.find((r) => r.idx === request?.nodeRunIdx) ?? forkable[0];
-  const [idx, setIdx] = useState(start?.idx ?? 1);
-  const selected = forkable.find((r) => r.idx === idx) ?? forkable[0];
+  // The agent to change is the one that was selected on the line. There is no second place to choose it.
+  const selected = forkable.find((r) => r.idx === request?.nodeRunIdx);
+  const start = selected;
   const prefill = useMemo(() => (selected ? forkPrefill(selected) : {}), [selected]);
   // One editor per value the agent wrote. A suggested fix arrives pre-applied.
   const [texts, setTexts] = useState<Record<string, string>>(() => {
@@ -32,8 +32,21 @@ export function TestFixPanel({
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  if (!request) {
+    return (
+      <section id="test-fix" tabIndex={-1} aria-label="Fork this run" className="card flex flex-col gap-1 p-5">
+        <h2 className="font-serif text-xl">Fork this run</h2>
+        <p className="max-w-[60ch] text-muted">Select an agent on the line above, then click <b className="font-medium text-ink">Fork here</b>. The form for changing it opens here.</p>
+      </section>
+    );
+  }
   if (!selected) {
-    return <p className="rounded-xl border border-line p-4 text-sm text-muted">This run has no agent whose output can be changed.</p>;
+    return (
+      <section id="test-fix" tabIndex={-1} aria-label="Fork this run" className="card flex flex-col gap-1 p-5">
+        <h2 className="font-serif text-xl">Nothing to change here</h2>
+        <p className="max-w-[60ch] text-muted">This agent did not write any value the next agent uses, so there is nothing to change. Select a different agent on the line above and click Fork here.</p>
+      </section>
+    );
   }
 
   const parsed = Object.keys(prefill).map((key) => {
@@ -57,21 +70,14 @@ export function TestFixPanel({
   const invalid = parsed.find((p) => p.error);
   const problem = invalid ? `Fix the JSON in "${invalid.key}" first.` : lines.length === 0 ? "Change a value above to see what it does." : null;
 
-  function choose(next: number) {
-    const target = forkable.find((r) => r.idx === next);
-    if (!target) return;
-    setIdx(next);
-    setTexts(Object.fromEntries(Object.entries(forkPrefill(target)).map(([k, v]) => [k, asText(v)])));
-    setApiError(null);
-  }
-
+  const forkAt = selected.idx;
   async function launch() {
     setSubmitting(true);
     setApiError(null);
     try {
       const { id } = await api<{ id: string }>("/v1/experiments", {
         method: "POST",
-        body: JSON.stringify({ run_id: run.id, fork_node_run_idx: selected.idx, edit, n }),
+        body: JSON.stringify({ run_id: run.id, fork_node_run_idx: forkAt, edit, n }),
       });
       setSubmitting(false);
       onLaunched(id);
@@ -89,6 +95,7 @@ export function TestFixPanel({
     <section id="test-fix" tabIndex={-1} aria-label="Test a fix" className="flex flex-col gap-5">
       <div>
         <h2 className="font-serif text-2xl">Fork at the <span className="capitalize">{selected.agent}</span></h2>
+        <p className="mt-1 text-[0.8125rem] text-muted">Agent {forkable.findIndex((r) => r.idx === selected.idx) + 1} of {forkable.length} that can be changed. To fork somewhere else, select another agent on the line above.</p>
         <p className="mt-1 max-w-prose text-muted">
           Everything before this agent stays exactly as recorded. You change what this agent <b className="font-medium text-ink">produced</b>,
           using what went into it as your guide. Then everything after it runs again, with your change and without it, and a new
@@ -104,22 +111,6 @@ export function TestFixPanel({
           You can change any value this agent wrote for the next agent. You cannot yet change its instructions and run the agent
           itself again, because that needs your workflow code.
         </p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <label htmlFor="agent" className="font-medium">Which agent do you want to change?</label>
-        <select
-          id="agent"
-          value={selected.idx}
-          onChange={(e) => choose(Number(e.target.value))}
-          className="max-w-md rounded-lg border border-ink/30 bg-background px-3 py-2.5"
-        >
-          {forkable.map((r) => (
-            <option key={r.idx} value={r.idx}>
-              {r.agent.charAt(0).toUpperCase() + r.agent.slice(1)} (wrote {r.writes.join(", ")})
-            </option>
-          ))}
-        </select>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">

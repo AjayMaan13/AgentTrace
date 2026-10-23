@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { buildGraph, COL_W, type GEdge, type GNode, LANE_H, pos, type Tone } from "@/lib/graph";
+import { buildGraph, COL_W, type GEdge, type GNode, laneY, pos, type Tone } from "@/lib/graph";
 import type { Mark } from "@/lib/story";
 import type { Experiment, Step } from "@/lib/types";
 
@@ -41,7 +41,7 @@ export function FlowGraph({
           <p
             key={lane.index}
             className={`absolute text-[0.8125rem] leading-snug text-muted ${lane.index === 0 ? "" : "w-[104px]"}`}
-            style={lane.index === 0 ? { left: 36, top: 56 - 36 } : { left: 16, top: 56 + lane.index * LANE_H + 40 - 16 }}
+            style={lane.index === 0 ? { left: 36, top: laneY(0) - 62 } : { left: 16, top: laneY(lane.index) - 16 }}
           >
             <span className={`mr-2 inline-block h-2 w-2 rounded-full ${lane.index === 0 ? "bg-muted" : lane.tone === "good" ? "bg-good" : lane.tone === "bad" ? "bg-bad" : "bg-muted"}`} aria-hidden />
             {lane.label}
@@ -71,7 +71,7 @@ function Edge({ edge, byId, tone }: { edge: GEdge; byId: Map<string, GNode>; ton
     const d = `M ${jx} ${p.y} V ${q.y - r} Q ${jx} ${q.y} ${jx + r} ${q.y} H ${q.x - R - 1}`;
     return (
       <g>
-        <path d={d} fill="none" stroke={stroke} strokeWidth={2} className="draw" style={{ ["--len" as string]: 400 }} markerEnd="url(#tip)" />
+        <path d={d} fill="none" stroke={stroke} strokeWidth={2} className="draw" style={{ ["--len" as string]: Math.abs(q.y - p.y) + Math.abs(q.x - jx) + 80 }} markerEnd="url(#tip)" />
         <circle cx={jx} cy={p.y} r={4} fill={stroke} />
       </g>
     );
@@ -107,9 +107,16 @@ function Node({ node: n, selected, onSelect }: { node: GNode; selected: boolean;
         </span>
       )}
       {n.kind !== "result" && label}
-      <span className="max-w-[134px] text-[0.8125rem] leading-snug text-muted">
-        {n.mark?.kind === "cause" ? <span className="text-bad">Likely cause · {Math.round(n.mark.confidence * 100)}%</span> : n.mark?.kind === "carried" ? <span className="text-warn">Passed the mistake on</span> : n.sub}
-      </span>
+      {/* What the agent does (or what happened), then, if it matters, how it is involved in the mistake. */}
+      <span className="line-clamp-3 max-w-[134px] text-[0.8125rem] leading-snug text-muted" title={n.sub}>{n.sub}</span>
+      {n.mark?.kind === "cause" && (
+        <span className="rounded-full border border-bad/40 bg-bad-tint px-2 py-0.5 text-[0.75rem] font-medium text-bad">
+          Likely cause · {Math.round(n.mark.confidence * 100)}%
+        </span>
+      )}
+      {n.mark?.kind === "carried" && (
+        <span className="rounded-full border border-warn/40 bg-warn-tint px-2 py-0.5 text-[0.75rem] font-medium text-warn">Affected by it</span>
+      )}
     </button>
   );
 }

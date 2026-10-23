@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentCards, brief, callsLabel, describeChange } from "./story.ts";
+import { agentCards, brief, callsLabel, describeChange, taskOf } from "./story.ts";
 import type { Step } from "./types.ts";
 
 const step = (over: Partial<Step>): Step => ({
@@ -43,4 +43,14 @@ test("a change reads as the last two path parts and its new value", () => {
 test("calls are summarised in plain words", () => {
   assert.equal(callsLabel({ toolCalls: 2, modelCalls: 1 }), "2 tool calls, 1 model call");
   assert.equal(callsLabel({ toolCalls: 0, modelCalls: 1 }), "1 model call");
+});
+
+test("what an agent does is read from its own instructions, skipping the sentence that says who it is", () => {
+  const llm = (system: string): Step => step({ kind: "llm", input: { system, messages: [] } });
+  assert.equal(taskOf([llm("You are the planning agent in a workflow. Turn the request into a JSON plan for a brief. Reply with ONLY a JSON object.")]), "Turn the request into a JSON plan for a brief");
+  assert.equal(taskOf([llm("You are the reviewing agent. Check the brief against the findings. Approve unless it is wrong.")]), "Check the brief against the findings");
+  assert.equal(taskOf([llm("You are the research agent. You are given data. Summarise it in 3 to 5 plain sentences: how many tickets.")]), "Summarise it in 3 to 5 plain sentences");
+  assert.equal(taskOf([step({ kind: "tool" })]), null);
+  assert.equal(taskOf([llm("You are an agent.")]), null);
+  assert.ok(taskOf([llm("You are X. " + "Write a very long description of everything that happens here ".repeat(5))])!.length <= 72);
 });

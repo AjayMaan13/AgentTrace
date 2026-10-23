@@ -64,7 +64,7 @@ test("a running fork shows progress, not a result", () => {
 test("several forks stack as lanes, and a fork of an unknown agent is skipped", () => {
   const g = buildGraph(steps, { experiments: [exp({ id: "a", fork_node_run_idx: 1 }), exp({ id: "b", fork_node_run_idx: 4 }), exp({ id: "c", fork_node_run_idx: 99 })] });
   assert.deepEqual(g.lanes.map((l) => l.index), [0, 1, 2]);
-  assert.match(g.lanes[2].label, /Fork 2: critic changed/);
+  assert.match(g.lanes[1].label, /Fork 2: critic changed/); // a fork at a later agent sits nearer the line
 });
 
 test("positions grow to the right with the column and down with the lane", () => {
@@ -75,13 +75,13 @@ test("positions grow to the right with the column and down with the lane", () =>
 test("the edited node shows what was changed, before and after", () => {
   const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: "new" } })] });
   const edited = g.nodes.find((n) => n.id === "e1:edit")!;
-  assert.equal(edited.sub, "k1: 1 → new");
+  assert.equal(edited.sub, "Changed k1: 1 → new");
   assert.deepEqual(edited.change, ["k1: 1 → new"]);
 });
 
 test("an edit that changes nothing falls back to plain words", () => {
   const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: 1 } })] });
-  assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "with your change");
+  assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "Changed by you");
 });
 
 test("setting up a fork opens a dashed line at once, before anything runs", () => {
@@ -118,7 +118,7 @@ test("an ordinary recorded run keeps its plain call counts", () => {
 test("a long rewritten text is described, not quoted half-way", () => {
   const long = "The brief has all the required sections and a valid JSON footer.";
   const g = buildGraph(steps, { experiments: [exp({ fork_node_run_idx: 2, edit_patch: { k1: long } })] });
-  assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "k1 rewritten");
+  assert.equal(g.nodes.find((n) => n.id === "e1:edit")!.sub, "Changed k1");
 });
 
 test("a fork made from one of another fork's runs leaves that fork's line, where the change was made", () => {
@@ -149,4 +149,32 @@ test("a fork of a run we do not draw is left out, and a draft from a fork leaves
   const first = exp({ id: "e1", parent_run: "main", fork_node_run_idx: 2, tiles: [] });
   const g = buildGraph(withRuns, { experiments: [first], draft: { nodeRun: 4, fromExperiment: "e1" } });
   assert.equal(g.edges.find((e) => e.id === "draft:spawn")!.from, "e1:3");
+});
+
+test("a new fork opens right under the line it came from and pushes the others down", () => {
+  const at = (id: string, node: number, when: string) => exp({ id, fork_node_run_idx: node, created_at: when });
+  const before = buildGraph(steps, { experiments: [at("planner1", 1, "2026-01-01"), at("writer1", 3, "2026-01-02")] });
+  assert.deepEqual(before.lanes.slice(1).map((l) => l.experiment), ["writer1", "planner1"]); // later agent first
+  const after = buildGraph(steps, { experiments: [at("planner1", 1, "2026-01-01"), at("writer1", 3, "2026-01-02"), at("writer2", 3, "2026-01-03")] });
+  assert.deepEqual(after.lanes.slice(1).map((l) => l.experiment), ["writer2", "writer1", "planner1"]); // newest at that agent on top
+  assert.deepEqual(after.lanes.map((l) => l.index), [0, 1, 2, 3]);
+});
+
+test("a fork's own forks sit directly under it, before its older siblings", () => {
+  const withRuns = steps.map((s) => ({ ...s, run: "main" }));
+  const a = exp({ id: "a", parent_run: "main", fork_node_run_idx: 2, created_at: "1", tiles: [{ arm: "treatment", i: 0, status: "done", run_id: "ra", outcome: "pass" }] });
+  const b = exp({ id: "b", parent_run: "main", fork_node_run_idx: 2, created_at: "2", tiles: [] });
+  const child = exp({ id: "child", parent_run: "ra", fork_node_run_idx: 4, created_at: "3" });
+  const g = buildGraph(withRuns, { experiments: [a, b, child] });
+  assert.deepEqual(g.lanes.slice(1).map((l) => l.experiment), ["b", "a", "child"]);
+  const draft = buildGraph(withRuns, { experiments: [a, b], draft: { nodeRun: 2 } });
+  assert.deepEqual(draft.lanes.slice(1).map((l) => l.experiment), ["draft", "b", "a"]); // the one being set up is the newest
+});
+
+test("every lane has the same agents in the same columns as the original line, so lines always line up", () => {
+  const g = buildGraph(steps, { experiments: [exp({ id: "x", fork_node_run_idx: 2 })] });
+  const col = (id: string) => g.nodes.find((n) => n.id === id)!.col;
+  assert.equal(col("x:edit"), col("a2"));
+  assert.equal(col("x:3"), col("a3"));
+  assert.equal(col("x:end"), col("end"));
 });
