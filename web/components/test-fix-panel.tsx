@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ApiError, useApi } from "@/lib/api";
 import { diffState } from "@/lib/diff";
@@ -15,9 +14,8 @@ const asText = (v: unknown) => JSON.stringify(v, null, 2);
 /** Change what one agent wrote, then run everything after it again, N times with your change
  * and N times without. Earlier steps replay exactly from the recording; later ones run live. */
 export function TestFixPanel({
-  run, request,
-}: { run: Run; request?: { nodeRunIdx: number; patch: State } | null }) {
-  const router = useRouter();
+  run, request, onLaunched,
+}: { run: Run; request?: { nodeRunIdx: number; patch: State } | null; onLaunched: (experimentId: string) => void }) {
   const api = useApi();
   const forkable = useMemo(() => nodeRuns(run.steps).filter((r) => r.stateAfter && r.writes.length > 0), [run.steps]);
   const start = forkable.find((r) => r.idx === request?.nodeRunIdx) ?? forkable[0];
@@ -34,7 +32,7 @@ export function TestFixPanel({
   const [apiError, setApiError] = useState<string | null>(null);
 
   if (!selected) {
-    return <p className="rounded-xl border border-white/10 p-4 text-sm text-zinc-400">This run has no agent whose output can be changed.</p>;
+    return <p className="rounded-xl border border-line p-4 text-sm text-muted">This run has no agent whose output can be changed.</p>;
   }
 
   const parsed = Object.keys(prefill).map((key) => {
@@ -74,7 +72,8 @@ export function TestFixPanel({
         method: "POST",
         body: JSON.stringify({ run_id: run.id, fork_node_run_idx: selected.idx, edit, n }),
       });
-      router.push(`/experiments/${id}`);
+      setSubmitting(false);
+      onLaunched(id);
     } catch (err) {
       setApiError(err instanceof ApiError || err instanceof Error ? err.message : "Request failed");
       setSubmitting(false);
@@ -85,10 +84,10 @@ export function TestFixPanel({
   return (
     <section id="test-fix" tabIndex={-1} aria-label="Test a fix" className="flex flex-col gap-5">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">Test a fix</h2>
-        <p className="mt-1 max-w-prose text-zinc-400">
-          Change what one agent decided, then run everything after it again. We count how often the answer comes out
-          right with your change and without it.
+        <h2 className="font-serif text-2xl">Fork this run</h2>
+        <p className="mt-1 max-w-prose text-muted">
+          Change what one agent decided. A new line opens on the graph above and everything after that agent runs again,
+          with your change and without it, so you can see how often the answer comes out right.
         </p>
       </div>
 
@@ -98,7 +97,7 @@ export function TestFixPanel({
           id="agent"
           value={selected.idx}
           onChange={(e) => choose(Number(e.target.value))}
-          className="max-w-md rounded-lg border border-white/20 bg-background px-3 py-2.5"
+          className="max-w-md rounded-lg border border-ink/30 bg-background px-3 py-2.5"
         >
           {forkable.map((r) => (
             <option key={r.idx} value={r.idx}>
@@ -114,7 +113,7 @@ export function TestFixPanel({
           const p = parsed.find((x) => x.key === key);
           return (
             <div key={key} className="flex flex-col gap-1">
-              <label htmlFor={`edit-${key}`} className="font-mono text-sm text-zinc-400">{key}</label>
+              <label htmlFor={`edit-${key}`} className="font-mono text-sm text-muted">{key}</label>
               <textarea
                 id={`edit-${key}`}
                 value={texts[key] ?? ""}
@@ -122,23 +121,23 @@ export function TestFixPanel({
                 spellCheck={false}
                 rows={Math.min(12, Math.max(4, (texts[key] ?? "").split("\n").length + 1))}
                 aria-invalid={!!p?.error}
-                className="rounded-lg border border-white/20 bg-white/[0.03] p-3 font-mono text-xs leading-relaxed"
+                className="rounded-lg border border-ink/30 bg-frame p-3 font-mono text-xs leading-relaxed"
               />
-              {p?.error && <p role="alert" className="text-sm text-rose-300">{p.error}</p>}
+              {p?.error && <p role="alert" className="text-sm text-bad">{p.error}</p>}
             </div>
           );
         })}
         {lines.length > 0 && (
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3" aria-live="polite">
+          <div className="rounded-lg border border-line bg-frame p-3" aria-live="polite">
             <p className="text-sm font-medium">Your change</p>
             <ul className="mt-1 space-y-1 font-mono text-xs">
               {lines.map((l) => (
                 <li key={l.id} className="break-all">
-                  <span className="text-zinc-300">{l.path}: </span>
-                  <span className="text-rose-300 line-through decoration-rose-300/60">{l.before}</span>
-                  <span aria-hidden className="text-zinc-500"> → </span>
+                  <span className="text-ink">{l.path}: </span>
+                  <span className="text-bad line-through decoration-bad/60">{l.before}</span>
+                  <span aria-hidden className="text-muted"> → </span>
                   <span className="sr-only"> became </span>
-                  <span className="text-emerald-300">{l.after}</span>
+                  <span className="text-good">{l.after}</span>
                 </li>
               ))}
             </ul>
@@ -156,17 +155,17 @@ export function TestFixPanel({
               onClick={() => setN(choice)}
               aria-pressed={n === choice}
               className={`rounded-lg border px-4 py-2 font-medium tabular-nums ${
-                n === choice ? "border-white bg-white text-zinc-950" : "border-white/20 hover:bg-white/5"
+                n === choice ? "border-ink bg-ink text-white" : "border-ink/30 hover:bg-ink/5"
               }`}
             >
               {choice}
             </button>
           ))}
-          <span className="text-sm text-zinc-400">
+          <span className="text-sm text-muted">
             {n} without your change + {n} with it = {2 * n} runs
           </span>
         </div>
-        <p className="max-w-prose text-xs text-zinc-500">
+        <p className="max-w-prose text-xs text-muted">
           Everything before this agent is replayed exactly from the recording. Everything after it runs live against
           Claude, so results can vary from run to run. That is why we repeat it.
         </p>
@@ -177,12 +176,12 @@ export function TestFixPanel({
           type="button"
           onClick={launch}
           disabled={problem !== null || submitting}
-          className="accent-bg rounded-lg px-6 py-3 font-semibold hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="btn btn-primary rounded-lg px-6 py-3 font-semibold hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {submitting ? "Starting…" : `Run the test (${2 * n} runs)`}
+          {submitting ? "Opening the new line…" : `Fork and run (${2 * n} runs)`}
         </button>
-        <p role="alert" className="min-h-5 text-sm text-zinc-400">
-          {error ? <span className="text-rose-300">{error}</span> : problem}
+        <p role="alert" className="min-h-5 text-sm text-muted">
+          {error ? <span className="text-bad">{error}</span> : problem}
         </p>
       </div>
     </section>

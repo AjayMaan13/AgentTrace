@@ -12,7 +12,7 @@ const show = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v));
 export function Inspector({ step, steps }: { step: Step | null; steps: Step[] }) {
   if (!step) {
     return (
-      <p className="rounded-lg border border-zinc-300 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+      <p className="rounded-lg border border-line p-4 text-sm text-muted">
         Select a step above to inspect its prompt, tool payload, and the state change.
       </p>
     );
@@ -24,14 +24,14 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
   const input = step.input as { system?: unknown; messages?: unknown; tools?: unknown } | null;
 
   return (
-    <section aria-label="Step inspector" className="flex flex-col gap-5 rounded-xl border border-white/10 bg-white/[0.02] p-5">
+    <section aria-label="Step inspector" className="flex flex-col gap-5 rounded-xl border border-line bg-sheet p-5">
       <header className="flex flex-wrap items-center gap-2">
         <h3 className="text-lg font-semibold capitalize">
           {step.agent}: {step.kind === "tool" ? `tool call to ${step.tool_name ?? "a tool"}` : "model call"}
         </h3>
         <OriginBadge origin={step.origin} />
       </header>
-      <p className="-mt-3 text-xs text-zinc-500">
+      <p className="-mt-3 text-xs text-muted">
         This step is {step.origin === "live" ? "re-run live and sampled" : `${step.origin}: ${ORIGINS[step.origin].meaning}`}.
       </p>
 
@@ -44,14 +44,14 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
       <div>
         <h4 className="mb-1 text-sm font-semibold">What this agent changed</h4>
         {step.state_after === null && lastIdx !== undefined && (
-          <p className="mb-1 text-xs text-zinc-600 dark:text-zinc-400">
+          <p className="mb-1 text-xs text-muted">
             The change is saved on this agent&apos;s last step (step {lastIdx}); this is what the agent changed overall.
           </p>
         )}
         {changes.length === 0 ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">It did not change anything.</p>
+          <p className="text-sm text-muted">It did not change anything.</p>
         ) : (
-          <ul className="divide-y divide-zinc-200 rounded-md border border-zinc-300 font-mono text-xs dark:divide-zinc-800 dark:border-zinc-700">
+          <ul className="divide-y divide-line rounded-md border border-line font-mono text-xs">
             {changes.map((c) => (
               <li key={c.path} className="flex flex-col gap-0.5 px-3 py-2">
                 <span className="font-semibold">
@@ -59,8 +59,8 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
                   <span className="sr-only">{c.kind}: </span>
                   {c.path}
                 </span>
-                {c.kind !== "added" && <span className="break-all text-rose-300">was {show(c.before)}</span>}
-                {c.kind !== "removed" && <span className="break-all text-emerald-300">now {show(c.after)}</span>}
+                {c.kind !== "added" && <span className="break-all text-bad">was {show(c.before)}</span>}
+                {c.kind !== "removed" && <span className="break-all text-good">now {show(c.after)}</span>}
               </li>
             ))}
           </ul>
@@ -81,7 +81,7 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
       )}
       {step.origin === "edited" && <JsonBlock label="Your edit" value={step.output} />}
 
-      <p className="text-xs text-zinc-600 dark:text-zinc-400">
+      <p className="text-xs text-muted">
         Read from the shared state: {step.reads.join(", ") || "nothing"} · Wrote: {step.writes.join(", ") || "nothing"}
         {step.redactions.length > 0 && ` · ${step.redactions.length} secret value(s) were removed before storage`}
       </p>
@@ -92,7 +92,7 @@ export function Inspector({ step, steps }: { step: Step | null; steps: Step[] })
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs text-zinc-600 dark:text-zinc-400">{label}</dt>
+      <dt className="text-xs text-muted">{label}</dt>
       <dd className="break-words font-medium">{value}</dd>
     </div>
   );

@@ -13,7 +13,7 @@ export function LoadState<T>({
           ? (notFound ?? "Not found in this workspace. If you switched organizations, go back to Runs.")
           : `Could not load (${state.code || "network"}): ${state.message}`;
     return (
-      <p role="alert" className="rounded-lg border border-red-300 p-4 text-sm text-red-800 dark:text-red-300">
+      <p role="alert" className="rounded-lg border border-bad/40 p-4 text-sm text-bad">
         {message}
       </p>
     );

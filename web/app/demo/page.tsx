@@ -1,12 +1,20 @@
+import { Shell } from "@/components/shell";
 import { Suspense } from "react";
-import { DemoLoader } from "./demo-loader";
+import { loadDemo } from "@/lib/demo";
+import { DemoView } from "./demo-loader";
+
+async function Content() {
+  return <DemoView demo={await loadDemo()} />;
+}
 
 export default function DemoPage() {
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
-      <Suspense fallback={<p className="font-mono text-sm">Loading…</p>}>
-        <DemoLoader />
-      </Suspense>
-    </main>
+    <Shell>
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-5 py-8 sm:px-8">
+        <Suspense fallback={<p className="text-muted">Loading the saved run…</p>}>
+          <Content />
+        </Suspense>
+      </main>
+    </Shell>
   );
 }

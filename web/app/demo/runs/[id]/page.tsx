@@ -1,10 +1,12 @@
+import { Shell } from "@/components/shell";
 import Link from "next/link";
 import { Suspense } from "react";
 import { DemoRunLoader } from "./run-loader";
 
 export default function DemoRunPage() {
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
+    <Shell>
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-5 py-8 sm:px-8">
       <Link href="/demo" className="text-sm underline-offset-4 hover:underline">
         ← Back to the demo
       </Link>
@@ -12,5 +14,6 @@ export default function DemoRunPage() {
         <DemoRunLoader />
       </Suspense>
     </main>
+    </Shell>
   );
 }

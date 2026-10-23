@@ -22,8 +22,8 @@ export function ExperimentView({
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <Heading className="text-2xl font-semibold tracking-tight">{title ?? "Test result"}</Heading>
-        {blurb && <p className="text-zinc-400">{blurb}</p>}
-        <p className="text-sm text-zinc-700 dark:text-zinc-300">
+        {blurb && <p className="text-muted">{blurb}</p>}
+        <p className="text-sm text-muted">
           Started from{" "}
           <Link href={runHref(e.parent_run)} className="font-mono underline underline-offset-4">
             run {shortId(e.parent_run)}
@@ -35,7 +35,7 @@ export function ExperimentView({
       <ResultCard experiment={e} finished={finished} />
 
       <section aria-label="Runs">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">Every run</h2>
+        <h2 className="mb-2 text-base font-medium text-ink">Every run</h2>
         <div className="flex flex-col gap-3">
           {(["control", "treatment"] as const).map((arm) => (
             <div key={arm} className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -50,14 +50,14 @@ export function ExperimentView({
             </div>
           ))}
         </div>
-        <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
-          Green: right answer. Red: wrong answer. Orange: crashed. Select a square to open that run.
+        <p className="mt-3 text-xs text-muted">
+          Select a square to open that run.
         </p>
       </section>
 
       {e.benchmark && <BenchmarkTable benchmark={e.benchmark} />}
 
-      <details className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+      <details className="rounded-lg border border-line p-3">
         <summary className="cursor-pointer text-sm font-medium">What was changed</summary>
         <div className="mt-3">
           <JsonBlock label="The new value the agent was given" value={e.edit_patch} />
@@ -75,21 +75,21 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
     <section
       aria-live="polite"
       aria-label="Result"
-      className="glow rounded-2xl border border-white/15 bg-white/[0.03] p-5 sm:p-8"
+      className="rounded-2xl border border-line bg-frame p-5 sm:p-8"
     >
       {verdict && (
-        <p className={`text-2xl font-semibold sm:text-3xl ${verdict.tone === "good" ? "text-emerald-300" : verdict.tone === "bad" ? "text-rose-300" : ""}`}>
+        <p className={`text-2xl font-semibold sm:text-3xl ${verdict.tone === "good" ? "text-good" : verdict.tone === "bad" ? "text-bad" : ""}`}>
           {verdict.text}
         </p>
       )}
-      <p className="mt-4 text-sm uppercase tracking-wide text-zinc-400">How often the answer came out right</p>
+      <p className="mt-4 text-base text-ink">How often the answer came out right</p>
       <div className="mt-2 grid grid-cols-2 gap-4">
         <div>
-          <p className="text-sm text-zinc-400">Without the change</p>
+          <p className="text-sm text-muted">Without the change</p>
           <p className="text-4xl font-bold tabular-nums sm:text-6xl">{c.pass}/{c.total}</p>
         </div>
         <div>
-          <p className="text-sm text-zinc-400">With the change</p>
+          <p className="text-sm text-muted">With the change</p>
           <p className="text-4xl font-bold tabular-nums sm:text-6xl">{t.pass}/{t.total}</p>
         </div>
       </div>
@@ -104,7 +104,7 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
         )}
       </p>
       {stats.wilson.control && stats.wilson.treatment && (
-        <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+        <p className="mt-1 text-sm text-muted">
           95% intervals: without {percent(stats.wilson.control[0])}–{percent(stats.wilson.control[1])}, with{" "}
           {percent(stats.wilson.treatment[0])}–{percent(stats.wilson.treatment[1])}. Small N shows direction, not proof.
         </p>
@@ -115,22 +115,22 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
           <p className="text-sm font-medium">
             Running: {finished} of {e.tiles.length} runs finished
           </p>
-          <div className="mt-1 h-2 overflow-hidden rounded bg-zinc-200 dark:bg-zinc-800">
-            <div className="h-full bg-zinc-900 transition-all dark:bg-zinc-100" style={{ width: `${(finished / e.tiles.length) * 100}%` }} />
+          <div className="mt-1 h-2 overflow-hidden rounded bg-tile">
+            <div className="h-full bg-ink transition-all" style={{ width: `${(finished / e.tiles.length) * 100}%` }} />
           </div>
         </div>
       )}
       {e.status === "capped" && (
-        <p className="mt-4 text-sm font-medium text-orange-800 dark:text-orange-300">
+        <p className="mt-4 text-sm font-medium text-orange-800">
           Stopped early at the token ceiling ({formatTokens(e.token_ceiling)}); only finished runs are counted.
         </p>
       )}
       {e.status === "error" && (
-        <p role="alert" className="mt-4 text-sm font-medium text-red-800 dark:text-red-300">
+        <p role="alert" className="mt-4 text-sm font-medium text-bad">
           The experiment failed{e.error ? ` (${e.error})` : ""}. Counts show the runs that finished.
         </p>
       )}
-      <p className="mt-4 text-xs text-zinc-600 dark:text-zinc-400">
+      <p className="mt-4 text-xs text-muted">
         Earlier steps replay exactly from the recording. Later steps ran live and are sampled, so each arm runs N
         times. {formatTokens(e.tokens_used)} tokens.
       </p>
@@ -138,39 +138,40 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
   );
 }
 
-const TILE_BASE = "flex h-10 w-10 items-center justify-center rounded-md text-base font-bold";
+const TILE_BASE = "flex h-11 w-11 items-center justify-center rounded-md text-xs font-medium";
 
-function TileCell({ tile, runHref }: { tile: Tile; runHref: (runId: string) => string }) {
-  let className = `${TILE_BASE} bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400`;
-  let glyph = "";
-  let label = "queued";
+export function TileCell({ tile, runHref }: { tile: Tile; runHref: (runId: string) => string }) {
+  let className = `${TILE_BASE} bg-tile text-muted`;
+  let word = "";
+  let label = "waiting";
   if (tile.status === "running") {
-    className = `${TILE_BASE} animate-pulse bg-sky-300 text-sky-950`;
-    glyph = "…";
+    className = `${TILE_BASE} animate-pulse bg-run-2 text-ink`;
+    word = "running";
     label = "running";
   } else if (tile.status === "skipped") {
-    className = `${TILE_BASE} border-2 border-dashed border-zinc-500 text-zinc-600 dark:text-zinc-400`;
-    glyph = "–";
+    className = `${TILE_BASE} border border-dashed border-ink/40 text-muted`;
+    word = "skipped";
     label = "skipped";
   } else if (tile.status === "done") {
+    // Words, not colour alone: right, wrong, or crashed.
     const map = {
-      pass: ["bg-green-700 text-white", "✓", "passed"],
-      fail: ["bg-red-700 text-white", "✗", "failed"],
-      error: ["bg-orange-700 text-white", "!", "errored"],
+      pass: ["bg-good-solid text-white", "right", "gave the right answer"],
+      fail: ["bg-bad-solid text-white", "wrong", "gave a wrong answer"],
+      error: ["bg-warn text-frame", "crash", "crashed"],
     } as const;
-    const [cls, g, l] = map[tile.outcome ?? "error"];
+    const [cls, w, l] = map[tile.outcome ?? "error"];
     className = `${TILE_BASE} ${cls}`;
-    glyph = g;
+    word = w;
     label = l;
   }
-  const full = `${tile.arm} run ${tile.i}: ${label}`;
+  const full = `${tile.arm === "control" ? "Without the change" : "With the change"}, run ${tile.i}: ${label}`;
   return tile.run_id ? (
-    <Link href={runHref(tile.run_id)} className={`${className} hover:ring-2 hover:ring-zinc-900 dark:hover:ring-zinc-100`} aria-label={`${full}, open run`} title={full}>
-      {glyph}
+    <Link href={runHref(tile.run_id)} className={`${className} hover:ring-2 hover:ring-ink`} aria-label={`${full}. Open the run`} title={full}>
+      {word}
     </Link>
   ) : (
     <span className={className} aria-label={full} title={full}>
-      {glyph}
+      {word}
     </span>
   );
 }

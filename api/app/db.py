@@ -403,6 +403,16 @@ async def list_featured_experiments(workspace: str) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
+async def list_experiments_for_run(workspace: str, run_id: str) -> list[dict[str, Any]]:
+    """Every experiment (fork) started from this run, oldest first: the branches of its graph."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT * FROM experiment WHERE workspace = $ws AND parent_run = $r ORDER BY created_at ASC",
+            {"ws": workspace, "r": run_id},
+        )
+    return [_row(r) for r in rows]
+
+
 # --- audit, caps ------------------------------------------------------------------------------
 
 async def create_audit(workspace: str, doc: dict[str, Any]) -> None:

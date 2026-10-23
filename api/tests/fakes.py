@@ -154,6 +154,10 @@ class FakeDB:
     async def list_featured_experiments(self, ws):
         return [{**e} for e in self.experiments.values() if e["workspace"] == ws and e.get("featured")]
 
+    async def list_experiments_for_run(self, ws, run_id):
+        mine = [{**e} for e in self.experiments.values() if e["workspace"] == ws and e["parent_run"] == run_id]
+        return sorted(mine, key=lambda e: e.get("created_at", ""))
+
     async def create_rca_report(self, ws, report_id, doc):
         self.rca_reports.append({**doc, "id": report_id, "workspace": ws})
 
@@ -171,6 +175,6 @@ DB_FUNCTIONS = ("workspace_for_key_hash", "create_run", "run_exists", "add_steps
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
                 "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",
-                "get_featured_run_id", "list_featured_experiments", "list_memory_scopes", "create_audit", "list_audit",
+                "get_featured_run_id", "list_featured_experiments", "list_experiments_for_run", "list_memory_scopes", "create_audit", "list_audit",
                 "count_experiments_since", "delete_run_cascade", "update_rca_report",
                 "create_benchmark", "get_benchmark_for_experiment")

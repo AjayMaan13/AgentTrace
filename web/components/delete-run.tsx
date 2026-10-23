@@ -37,11 +37,11 @@ export function DeleteRun({ runId }: { runId: string }) {
         type="button"
         onClick={remove}
         disabled={busy}
-        className="rounded-md border-2 border-red-700 px-3 py-1.5 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-40 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-950"
+        className="btn border-bad/40 text-bad hover:bg-bad-tint"
       >
         {busy ? "Deleting…" : "Delete run"}
       </button>
-      {error && <p role="alert" className="text-sm text-red-800 dark:text-red-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
     </div>
   );
 }

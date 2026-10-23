@@ -34,3 +34,7 @@ npm-debug.log*
 *.log
 coverage/
 .vercel
+
+# --- third-party design skills (installed locally) and their working files ---
+.claude/skills/
+.taste-skill/

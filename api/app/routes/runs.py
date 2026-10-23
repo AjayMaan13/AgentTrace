@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app import db
 from app.auth import Principal, get_principal, read_workspace
+from app.experiments.runner import view as experiment_view
 from app.rca.memory import forget_scopes
 from app.security import audit
 
@@ -25,6 +26,14 @@ async def get_run(run_id: str, workspace: str = Depends(read_workspace)) -> dict
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+
+@router.get("/runs/{run_id}/experiments")
+async def list_run_experiments(run_id: str, workspace: str = Depends(read_workspace)) -> list[dict[str, Any]]:
+    """The forks of this run, each as its experiment: they are drawn as branches of the run."""
+    if not await db.run_exists(workspace, run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    return [experiment_view(e) for e in await db.list_experiments_for_run(workspace, run_id)]
 
 
 @router.delete("/runs/{run_id}")

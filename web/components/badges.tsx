@@ -1,9 +1,9 @@
 import type { Origin, Outcome } from "@/lib/types";
 
 const OUTCOME: Record<Outcome, { label: string; className: string }> = {
-  pass: { label: "PASS", className: "bg-green-700 text-white" },
-  fail: { label: "FAIL", className: "bg-red-700 text-white" },
-  error: { label: "ERROR", className: "bg-orange-700 text-white" },
+  pass: { label: "PASS", className: "bg-good-solid text-white" },
+  fail: { label: "FAIL", className: "bg-bad-solid text-white" },
+  error: { label: "ERROR", className: "bg-warn text-frame" },
 };
 
 export function OutcomeBadge({ outcome, status }: { outcome?: Outcome; status?: string }) {
@@ -11,7 +11,7 @@ export function OutcomeBadge({ outcome, status }: { outcome?: Outcome; status?: 
   return (
     <span
       className={`inline-block rounded px-2 py-0.5 text-xs font-semibold tracking-wide ${
-        style?.className ?? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100"
+        style?.className ?? "bg-tile text-ink"
       }`}
     >
       {style?.label ?? (status ?? "unknown").toUpperCase()}
@@ -24,26 +24,26 @@ export function OutcomeBadge({ outcome, status }: { outcome?: Outcome; status?: 
 export const ORIGINS: Record<Origin, { label: string; badge: string; chip: string; meaning: string }> = {
   recorded: {
     label: "recorded",
-    badge: "border-zinc-500 text-zinc-800 dark:border-zinc-400 dark:text-zinc-200",
-    chip: "border-zinc-500 dark:border-zinc-400",
+    badge: "border-muted text-ink",
+    chip: "border-muted",
     meaning: "captured from the original run",
   },
   replayed: {
     label: "replayed",
-    badge: "border-sky-600 text-sky-800 dark:border-sky-400 dark:text-sky-200",
-    chip: "border-sky-600 dark:border-sky-400",
+    badge: "border-line bg-tile text-ink",
+    chip: "border-line",
     meaning: "copied exactly from the recording, no API calls",
   },
   edited: {
     label: "edited",
-    badge: "border-amber-600 text-amber-800 dark:border-amber-400 dark:text-amber-200",
-    chip: "border-amber-600 border-dashed dark:border-amber-400",
+    badge: "border-warn/40 bg-warn-tint text-warn",
+    chip: "border-warn border-dashed",
     meaning: "your edit replaces the recorded output",
   },
   live: {
     label: "live",
-    badge: "border-violet-600 text-violet-800 dark:border-violet-400 dark:text-violet-200",
-    chip: "border-violet-600 dark:border-violet-400",
+    badge: "border-accent/50 text-accent",
+    chip: "border-accent",
     meaning: "re-run against Claude: sampled, not deterministic",
   },
 };

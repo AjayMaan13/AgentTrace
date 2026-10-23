@@ -189,3 +189,26 @@ def test_experiment_routes_require_sign_in(api, parent):
     app.dependency_overrides.pop(get_principal)  # log out
     assert post(api, parent).status_code == 401
     assert api.get("/v1/experiments/abc").status_code == 401
+
+
+# --- the forks of a run (the branches of its graph) -----------------------------------------
+
+def test_the_forks_of_a_run_are_listed_for_its_own_workspace_only(api, parent):
+    first = run_experiment(parent, n=2)
+    second = run_experiment(parent, n=2)
+    listed = api.get(f"/v1/runs/{parent}/experiments")
+    assert listed.status_code == 200
+    ids = [e["id"] for e in listed.json()]
+    assert ids == [first, second] or set(ids) == {first, second}
+    assert listed.json()[0]["control"]["total"] == 2 and "tiles" in listed.json()[0]
+
+
+def test_a_run_with_no_forks_lists_none_and_an_unknown_run_is_404(api, parent):
+    assert api.get(f"/v1/runs/{parent}/experiments").json() == []
+    assert api.get("/v1/runs/not-a-run/experiments").status_code == 404
+
+
+def test_another_workspace_cannot_list_the_forks(api, parent, login):
+    run_experiment(parent, n=2)
+    login("ws-b")
+    assert api.get(f"/v1/runs/{parent}/experiments").status_code == 404
