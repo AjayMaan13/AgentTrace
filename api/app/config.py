@@ -50,6 +50,9 @@ class Settings:
     dev_workspace_id: str  # local scripts only; the API itself never uses it
     demo_workspace_id: str  # the one workspace the public /demo routes may serve
     clerk_issuer: str
+    spectron_endpoint: str  # SurrealDB Agent Memory (formerly "Spectron")
+    spectron_context: str
+    spectron_api_key: str
     clerk_jwks_url: str
 
     tools_backend: str
@@ -58,6 +61,10 @@ class Settings:
     max_n: int
     max_tokens_per_experiment: int
     daily_experiments_per_user: int
+
+    @property
+    def memory_configured(self) -> bool:
+        return bool(self.spectron_endpoint and self.spectron_context and self.spectron_api_key)
 
     @property
     def surreal_configured(self) -> bool:
@@ -82,6 +89,9 @@ def get_settings() -> Settings:
         demo_workspace_id=_env("DEMO_WORKSPACE_ID", "demo"),
         clerk_issuer=_env("CLERK_ISSUER").rstrip("/"),
         clerk_jwks_url=_env("CLERK_JWKS_URL"),
+        spectron_endpoint=_env("SPECTRON_ENDPOINT").rstrip("/"),
+        spectron_context=_env("SPECTRON_CONTEXT"),
+        spectron_api_key=_env("SPECTRON_API_KEY"),
         tools_backend=_env("TOOLS_BACKEND", "fixtures").lower(),
         demo_account_id=_env("DEMO_ACCOUNT_ID", "acct-1"),
         max_n=_env_int("MAX_N", 8),

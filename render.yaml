@@ -46,6 +46,14 @@ services:
         sync: false
       - key: SALESFORCE_MCP_HEADER
         sync: false
+      # Agent Memory (failure patterns). Optional: without these the app runs, it just does not
+      # remember or recall.
+      - key: SPECTRON_ENDPOINT
+        sync: false
+      - key: SPECTRON_CONTEXT
+        sync: false
+      - key: SPECTRON_API_KEY
+        sync: false
 
   - type: web
     name: agenttrace-web

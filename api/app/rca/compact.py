@@ -41,7 +41,10 @@ def _detail(run: NodeRun, limit: int) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(run: dict[str, Any], lineage_idxs: list[int], oracle_keys: tuple[str, ...]) -> str:
+def build_prompt(
+    run: dict[str, Any], lineage_idxs: list[int], oracle_keys: tuple[str, ...],
+    past_patterns: list[dict[str, Any]] | None = None,
+) -> str:
     runs = node_runs(run["steps"])
     on_path = [r for r in runs if r.idx in lineage_idxs]
     overview = "\n".join(
@@ -60,4 +63,14 @@ def build_prompt(run: dict[str, Any], lineage_idxs: list[int], oracle_keys: tupl
         trace = f"<trace>\n## All steps, one line each\n{overview}\n\n## Full detail: lineage node runs\n{body}\n</trace>"
         if len(header) + len(trace) <= MAX_CHARS:
             break
-    return header + trace
+    return header + trace + _past_patterns_block(past_patterns or [])
+
+
+def _past_patterns_block(patterns: list[dict[str, Any]]) -> str:
+    """Earlier VERIFIED root causes from this workspace's memory, with the experiment that proved
+    each. A hint, not evidence about this run, and also untrusted text (it was written by a model),
+    so it is delimited and the system prompt says how to treat it."""
+    if not patterns:
+        return ""
+    lines = "\n".join(f"- [experiment {p['experiment']}] {p['text']}" for p in patterns)
+    return f"\n\n<past_patterns>\n{lines}\n</past_patterns>"

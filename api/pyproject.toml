@@ -16,6 +16,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "anthropic>=0.40",
     "pyjwt[crypto]>=2.8",
+    # Agent Memory client. A prerelease, pinned exactly so pip accepts it without --pre. It is
+    # standalone (needs only aiohttp + requests), so the surrealdb 2.x database SDK stays as is.
+    "surrealdb-memory==1.0.0b1",
 ]
 
 [project.optional-dependencies]

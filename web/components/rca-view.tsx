@@ -1,8 +1,10 @@
+import Link from "next/link";
 import type { Candidate, RcaReport } from "@/lib/types";
 
 /** Root-cause candidates, ranked. The agent proposes; experiments decide. */
 export function RcaView({
   report, agentOf, canRun, busy, error, onFind, onTest, readOnly = false,
+  experimentHref = () => null,
 }: {
   report: RcaReport | null;
   agentOf: (nodeRunIdx: number) => string;
@@ -12,6 +14,7 @@ export function RcaView({
   onFind: () => void;
   onTest: (candidate: Candidate) => void;
   readOnly?: boolean; // the public demo shows a saved report: nothing to run or test
+  experimentHref?: (experimentId: string) => string | null; // where "Seen before" links; null = no link
 }) {
   return (
     <section aria-label="Root cause" className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
@@ -58,6 +61,13 @@ export function RcaView({
                 <div className="mt-2 h-1.5 overflow-hidden rounded bg-zinc-200 dark:bg-zinc-800" aria-hidden>
                   <div className="h-full bg-zinc-900 dark:bg-zinc-100" style={{ width: `${c.confidence * 100}%` }} />
                 </div>
+                {c.matches_past_pattern && (
+                  <SeenBefore
+                    experimentId={c.matches_past_pattern}
+                    text={report.recalled.find((r) => r.experiment === c.matches_past_pattern)?.text}
+                    href={experimentHref(c.matches_past_pattern)}
+                  />
+                )}
                 <p className="mt-2 text-sm">{c.hypothesis}</p>
                 {c.evidence_quotes.length > 0 && (
                   <div className="mt-2">
@@ -98,5 +108,30 @@ export function RcaView({
         </>
       )}
     </section>
+  );
+}
+
+/** The candidate matches a root cause that an earlier experiment in this workspace verified. */
+function SeenBefore({ experimentId, text, href }: { experimentId: string; text?: string; href: string | null }) {
+  const chip = (
+    <span className="inline-flex items-center gap-1 rounded-full border border-violet-600 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:border-violet-400 dark:text-violet-200">
+      <span aria-hidden>↺</span> Seen before
+    </span>
+  );
+  return (
+    <div className="mt-2 flex flex-col gap-1">
+      {href ? (
+        <Link href={href} aria-label={`Seen before: open the experiment ${experimentId.slice(0, 8)} that verified it`} className="self-start hover:opacity-80">
+          {chip}
+        </Link>
+      ) : (
+        <span className="self-start">{chip}</span>
+      )}
+      {text && (
+        <p className="text-xs text-zinc-600 dark:text-zinc-400">
+          An earlier experiment in this workspace verified a similar root cause: {text}
+        </p>
+      )}
+    </div>
   );
 }

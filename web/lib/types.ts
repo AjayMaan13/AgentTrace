@@ -87,6 +87,16 @@ export type Candidate = {
   hypothesis: string;
   evidence_quotes: string[]; // checked verbatim against the trace by the API
   proposed_edit: { mode: "output"; patch: State } | null;
+  matches_past_pattern: string | null; // experiment id of a recalled, verified pattern this matches
+};
+
+/** A past verified root cause recalled from Agent Memory into this analysis. */
+export type RecalledPattern = {
+  experiment: string;
+  run: string | null;
+  agent_role: string | null;
+  text: string;
+  score: number;
 };
 
 export type RcaReport = {
@@ -96,6 +106,7 @@ export type RcaReport = {
   created_at: string;
   lineage: number[]; // node runs on the data path to the failing output
   dropped_quotes: number;
+  recalled: RecalledPattern[];
   tokens_in: number;
   tokens_out: number;
   candidates: Candidate[]; // ranked, most likely first

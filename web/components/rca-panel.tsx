@@ -39,6 +39,7 @@ export function RcaPanel({ run, onTest }: { run: Run; onTest: (candidate: Candid
       error={error ?? storedProblem}
       onFind={find}
       onTest={onTest}
+      experimentHref={(id) => `/experiments/${id}`}
     />
   );
 }

@@ -18,6 +18,8 @@ from agenttrace_sdk import redact
 from app import db
 from app.config import get_settings
 from app.experiments.stats import fisher_exact_two_sided, wilson
+from app.rca.memory import is_verified, remember_experiment
+from app.rca.report import report_view
 from app.replay.fork import prepare_fork, run_fork
 
 log = logging.getLogger(__name__)
@@ -142,7 +144,25 @@ async def _run(
         doc["status"] = "capped" if skipped else "done"
         doc["stats"] = _stats(doc)
         await persist(stats=doc["stats"], finished_at=_now())
+        if doc["status"] == "done":
+            await _remember(workspace, experiment_id, doc)
     except Exception as exc:
         log.error("experiment %s failed: %s", experiment_id, type(exc).__name__)
         doc["status"] = "error"
         await persist(error=type(exc).__name__)
+
+
+async def _remember(workspace: str, experiment_id: str, doc: dict[str, Any]) -> None:
+    """Store a verified experiment's root cause in Agent Memory. Best effort: whatever goes wrong
+    here, the experiment has already finished and its result stands."""
+    try:
+        shown = view({**doc, "id": experiment_id})
+        if not is_verified(shown["control"], shown["treatment"]):
+            return
+        run = await db.get_run_with_steps(workspace, doc["parent_run"])
+        stored_report = await db.get_latest_rca_report(workspace, doc["parent_run"])
+        report = report_view(stored_report) if stored_report else None
+        if run is not None and await remember_experiment(workspace, shown, run, report):
+            await db.update_experiment(workspace, experiment_id, {"remembered": True})
+    except Exception as exc:
+        log.warning("experiment %s: could not remember pattern: %s", experiment_id, type(exc).__name__)
