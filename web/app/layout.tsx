@@ -29,8 +29,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
+    // suppressHydrationWarning: browser extensions (Zotero, dark-mode tools) add attributes to <html>
+    // before React loads, which logs a harmless hydration warning. It only silences this one element.
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
