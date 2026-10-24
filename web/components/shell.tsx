@@ -7,9 +7,9 @@ import { type NavGroup, NavLinks } from "@/components/nav-links";
 const SIGNED_IN: NavGroup[] = [
   { label: "Your project", items: [{ href: "/runs", label: "Runs" }, { href: "/forks", label: "Forks" }, { href: "/activity", label: "Activity" }] },
   { label: "Set up", items: [{ href: "/connect", label: "Connect your agents" }] },
-  { label: "Learn", items: [{ href: "/demo", label: "Saved example" }] },
+  { label: "Learn", items: [{ href: "/demo", label: "Examples" }] },
 ];
-const SIGNED_OUT: NavGroup[] = [{ label: "Learn", items: [{ href: "/demo", label: "Saved example" }] }];
+const SIGNED_OUT: NavGroup[] = [{ label: "Learn", items: [{ href: "/demo", label: "Examples" }] }];
 
 /** The app frame, as in the Claude Console: a quiet sidebar with the product, the workspace and the
  * pages, and the work on the right. On a phone the sidebar becomes a bar across the top. */
@@ -71,7 +71,7 @@ export function TopBar() {
       <Brand />
       <Suspense>
         <nav className="flex items-center gap-3">
-          <Link href="/demo" className="hidden text-muted hover:text-ink sm:inline">Saved example</Link>
+          <Link href="/demo" className="hidden text-muted hover:text-ink sm:inline">Examples</Link>
           <Show when="signed-out">
             <SignInButton>
               <button type="button" className="btn btn-primary whitespace-nowrap">Sign in</button>

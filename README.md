@@ -4,7 +4,7 @@
 
 Traces show what happened. AgentTrace tests what caused it: record a run, fork it at any step, edit that step, and re-run the rest live N times in a **control arm** (no edit) and a **treatment arm** (your edit). The result is a success rate per arm, checked by code against ground truth, with a Fisher exact p-value labelled *directional*.
 
-- Live demo (no sign-in): <https://agenttrace-web.onrender.com/demo>
+- Live demo (no sign-in): <https://agenttrace-web.onrender.com/demo>, with an Examples dropdown: the saved failing run, all runs by time, keys and alerts, forking your own agents through a worker, and the terminal and CI
 - API: <https://agenttrace-api-apaa.onrender.com/health>
 - Built for Build North (Oct 2026), solo.
 
