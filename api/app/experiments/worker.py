@@ -107,6 +107,11 @@ def _finish(doc: dict[str, Any]) -> bool:
 
 async def claim(workspace: str, workflows: list[str], worker: str) -> dict[str, Any] | None:
     """The next job for a worker that can run `workflows`, or None."""
+    async with db.session():
+        return await _claim(workspace, workflows, worker)
+
+
+async def _claim(workspace: str, workflows: list[str], worker: str) -> dict[str, Any] | None:
     for _ in range(_RETRIES):
         docs = [
             copy.deepcopy(d) for d in await db.list_experiments(workspace)
@@ -148,6 +153,11 @@ async def claim(workspace: str, workflows: list[str], worker: str) -> dict[str, 
 
 async def report(workspace: str, body: WorkerResult) -> dict[str, Any]:
     """Record one finished job as a fork run and count it. Safe to send twice."""
+    async with db.session():
+        return await _report(workspace, body)
+
+
+async def _report(workspace: str, body: WorkerResult) -> dict[str, Any]:
     doc = await db.get_experiment(workspace, body.experiment)
     if doc is None or doc.get("mode") != "worker":
         raise HTTPException(status_code=404, detail="Experiment not found")

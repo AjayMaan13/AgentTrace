@@ -10,6 +10,7 @@ import logging
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -40,12 +41,35 @@ def _signin_vars(s: Settings) -> dict[str, str]:
     return creds
 
 
+_shared: ContextVar[Any] = ContextVar("surreal_shared", default=None)
+
+
+@asynccontextmanager
+async def session() -> AsyncIterator[None]:
+    """Share ONE connection between the calls made inside this block. Opening a connection to SurrealDB Cloud
+    costs about a second (TLS, sign-in), and a worker job makes dozens of calls: without this one took 21 s.
+    Everything inside runs one after another, in this task, so one connection is safe."""
+    if _shared.get() is not None:
+        yield
+        return
+    async with connect() as c:
+        token = _shared.set(c)
+        try:
+            yield
+        finally:
+            _shared.reset(token)
+
+
 @asynccontextmanager
 async def connect(settings: Settings | None = None) -> AsyncIterator[AsyncSurreal]:
-    """Open an authenticated connection scoped to SURREAL_NS / SURREAL_DB.
+    """Open an authenticated connection scoped to SURREAL_NS / SURREAL_DB, or the one a `session()` holds.
 
     The SDK appends /rpc to the url itself, so SURREAL_URL is the bare host.
     """
+    shared = _shared.get()
+    if shared is not None and settings is None:
+        yield shared
+        return
     s = settings or get_settings()
     async with AsyncSurreal(s.surreal_url) as db:
         if s.surreal_token:
@@ -135,10 +159,27 @@ async def list_api_keys(workspace: str) -> list[dict[str, Any]]:
     """A workspace's ingest keys, newest first. Only the display prefix is ever stored or returned."""
     async with connect() as c:
         rows = await c.query(
-            "SELECT id, prefix, scopes, created_by, created_at, revoked_at FROM api_key WHERE workspace = $ws "
+            "SELECT id, prefix, scopes, created_by, created_at, last_seen_at, revoked_at FROM api_key WHERE workspace = $ws "
             "ORDER BY created_at DESC", {"ws": workspace},
         )
     return [{**_row(r), "scopes": r.get("scopes") or ["ingest"]} for r in rows]  # a key from before scopes could only send runs
+
+
+async def touch_key(key_id: str) -> None:
+    """Note that a key was just used, so the app can say whether a worker is connected."""
+    async with connect() as c:
+        await c.query("UPDATE type::record('api_key', $id) SET last_seen_at = $now", {"id": key_id, "now": _now()})
+
+
+async def count_workers_since(workspace: str, since_iso: str) -> int:
+    """How many worker keys of the workspace have asked for a job since `since_iso`."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT count() AS n FROM api_key WHERE workspace = $ws AND scopes CONTAINS 'worker' AND revoked_at = NONE "
+            "AND last_seen_at > $since GROUP ALL",
+            {"ws": workspace, "since": since_iso},
+        )
+    return int(rows[0]["n"]) if rows else 0
 
 
 async def revoke_api_key(workspace: str, key_id: str) -> bool:

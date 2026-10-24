@@ -1,6 +1,7 @@
 """In-memory stand-in for the parts of app.db that routes and forks use (fast, offline)."""
 
 import copy
+from datetime import UTC, datetime
 from typing import Any
 
 from app import db
@@ -20,6 +21,15 @@ class FakeDB:
         self.fail_audit = False
         self.api_keys: list[dict[str, Any]] = []
         self.webhooks: dict[str, dict[str, Any]] = {}
+
+    def session(self):
+        """No connection to share here; the same block, so code under test runs as it does for real."""
+        from contextlib import asynccontextmanager  # noqa: PLC0415
+
+        @asynccontextmanager
+        async def noop():
+            yield
+        return noop()
 
     async def key_for_hash(self, h):
         for k in self.api_keys:
@@ -62,6 +72,15 @@ class FakeDB:
     async def list_api_keys(self, ws):
         return [{k: v for k, v in key.items() if k not in ("sha256", "workspace")}
                 for key in reversed(self.api_keys) if key["workspace"] == ws]
+
+    async def touch_key(self, key_id):
+        for k in self.api_keys:
+            if k["id"] == key_id:
+                k["last_seen_at"] = datetime.now(UTC).isoformat()
+
+    async def count_workers_since(self, ws, since_iso):
+        return sum(1 for k in self.api_keys if k["workspace"] == ws and "worker" in k["scopes"] and not k.get("revoked_at")
+                   and k.get("last_seen_at", "") > since_iso)
 
     async def revoke_api_key(self, ws, key_id):
         for key in self.api_keys:
@@ -242,7 +261,7 @@ class FakeDB:
         return max(mine, key=lambda r: r["created_at"]) if mine else None
 
 
-DB_FUNCTIONS = ("upsert_workspace", "create_api_key", "list_api_keys", "revoke_api_key", "list_experiments", "key_for_hash", "create_run", "run_exists", "add_steps", "finish_run",
+DB_FUNCTIONS = ("session", "touch_key", "count_workers_since", "upsert_workspace", "create_api_key", "list_api_keys", "revoke_api_key", "list_experiments", "key_for_hash", "create_run", "run_exists", "add_steps", "finish_run",
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
                 "create_experiment", "update_experiment", "update_experiment_if_rev", "create_webhook", "list_webhooks", "revoke_webhook", "claim_alert", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",

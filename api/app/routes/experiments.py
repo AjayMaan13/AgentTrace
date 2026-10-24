@@ -1,5 +1,6 @@
 """Start an experiment (returns immediately) and poll it. Scoped to the caller's workspace."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from agenttrace_sdk import SideEffectBlocked
@@ -61,9 +62,19 @@ async def list_experiments(workspace: str = Depends(read_workspace)) -> list[dic
     return [{**view(e), "fork_agent": agents.get(e["parent_run"], {}).get(e["fork_idx"])} for e in experiments]
 
 
+async def workers_online(workspace: str, doc: dict[str, Any]) -> int | None:
+    """How many of the workspace's workers asked for a job lately. Only for an experiment a worker runs."""
+    if doc.get("mode") != "worker":
+        return None
+    from app.routes.worker import ONLINE_FOR_S  # noqa: PLC0415
+    since = (datetime.now(UTC) - timedelta(seconds=ONLINE_FOR_S)).isoformat()
+    return await db.count_workers_since(workspace, since)
+
+
 @router.get("/experiments/{experiment_id}")
 async def get_experiment(experiment_id: str, workspace: str = Depends(read_workspace)) -> dict[str, Any]:
     doc = await db.get_experiment(workspace, experiment_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    return {**view(doc), "benchmark": benchmark_view(await db.get_benchmark_for_experiment(workspace, experiment_id))}
+    return {**view(doc), "benchmark": benchmark_view(await db.get_benchmark_for_experiment(workspace, experiment_id)),
+            "workers_online": await workers_online(workspace, doc)}

@@ -18,6 +18,7 @@ from jwt import PyJWKClient
 
 from app import db
 from app.config import get_settings
+from app.security.limits import key_use_limiter
 
 KEY_PREFIX = "at_live_"
 
@@ -58,6 +59,7 @@ async def _key(authorization: str | None) -> KeyPrincipal:
     found = await db.key_for_hash(hash_key(key))
     if found is None:
         raise _unauthorized("Invalid ingest key")
+    key_use_limiter.check(found["id"])  # a leaked key cannot hammer the API: it gets a 429 and a Retry-After
     return KeyPrincipal(found["workspace"], found["id"], tuple(found["scopes"]))
 
 

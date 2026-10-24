@@ -4,6 +4,7 @@ from app import db
 from app.auth import Principal, get_principal
 from app.main import app
 from app.rca import memory
+from app.routes import worker as worker_route
 from app.security import limits
 from fakes import DB_FUNCTIONS, FakeDB
 
@@ -36,6 +37,8 @@ def fresh_rate_limits():
     limits.key_limiter._calls.clear()
     limits.import_limiter._calls.clear()
     limits.alert_limiter._calls.clear()
+    limits.key_use_limiter._calls.clear()
+    worker_route._noted.clear()  # the 'worker seen' throttle is per process too
     limits.webhook_limiter._calls.clear()
 
 

@@ -257,3 +257,18 @@ def test_a_worker_only_takes_jobs_for_workflows_it_registered_and_must_say_a_rer
     assert asyncio.run(other.run_once()) is False
     with pytest.raises(ValueError, match="safe_to_rerun"):
         Worker(client=Transport(client, keys["worker"])).register(FLOW, resume, oracle=says_five, safe_to_rerun=False)
+
+
+def test_the_app_can_tell_whether_a_worker_is_connected(world, store):
+    client, keys = world
+    exp_id = start(client, record(client, keys), n=1).json()["id"]
+    assert client.get(f"/v1/experiments/{exp_id}").json()["workers_online"] == 0  # nobody has asked for a job
+    asyncio.run(Transport(client, keys["worker"]).call("POST", "/v1/worker/claim", {"workflows": ["some-other-flow"]}))  # asking is enough
+    assert client.get(f"/v1/experiments/{exp_id}").json()["workers_online"] == 1
+    read = Transport(client, keys["read"])
+    assert asyncio.run(read.call("GET", f"/v1/agent/experiments/{exp_id}"))["workers_online"] == 1
+    for k in store.api_keys:  # a worker that has gone quiet for two minutes is not connected
+        if "worker" in k["scopes"]:
+            k["last_seen_at"] = (datetime.now(UTC) - timedelta(seconds=120)).isoformat()
+    assert client.get(f"/v1/experiments/{exp_id}").json()["workers_online"] == 0
+

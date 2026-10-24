@@ -10,7 +10,7 @@ import { useApiData } from "@/lib/use-api-data";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://your-agenttrace-api";
 
-type KeyRow = { id: string; prefix: string; scopes?: string[]; created_at?: string; revoked_at?: string | null };
+type KeyRow = { id: string; prefix: string; scopes?: string[]; created_at?: string; last_seen_at?: string | null; revoked_at?: string | null };
 
 export function snippet(key: string): string {
   return `import asyncio
@@ -151,6 +151,7 @@ export function Connect() {
                 <code className="font-mono text-[0.8125rem]">{k.prefix}…</code>
                 <span className="text-muted">{k.revoked_at ? "stopped" : "working"} · can {describeScopes(k.scopes)}</span>
                 {k.created_at && <span className="text-[0.8125rem] text-muted">made {new Date(k.created_at).toLocaleDateString()}</span>}
+                {k.last_seen_at && <span className="text-[0.8125rem] text-muted">last asked {new Date(k.last_seen_at).toLocaleTimeString()}</span>}
                 {!k.revoked_at && <button type="button" className="btn ml-auto" onClick={() => revoke(k.id)}>Stop this key</button>}
               </li>
             ))}

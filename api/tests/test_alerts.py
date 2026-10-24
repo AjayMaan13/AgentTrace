@@ -208,3 +208,28 @@ def test_the_test_button_sends_a_sample_and_at_most_five_webhooks_can_exist(worl
     for _ in range(4):
         assert add(world).status_code == 201
     assert add(world).status_code == 409
+
+
+# --- the connection goes where the check said ------------------------------------------------
+
+def test_the_post_connects_to_the_address_that_passed_the_check_not_to_whatever_the_name_means_later(monkeypatch):
+    real = alerts._post_sync  # the fixture is not used here: this is the real function
+    seen = []
+    answers = iter([[(2, 1, 6, "", ("93.184.216.34", 443))], [(2, 1, 6, "", ("10.0.0.5", 443))]])  # a name that changes its mind
+    monkeypatch.setattr(alerts.socket, "getaddrinfo", lambda *a, **k: next(answers))
+
+    def connect(address, timeout=None):
+        seen.append(address)
+        raise OSError("stop here: nothing is listening")
+    monkeypatch.setattr(alerts.socket, "create_connection", connect)
+    with pytest.raises(OSError):
+        real("https://alerts.example.com/hook", b"{}", {})
+    assert seen == [("93.184.216.34", 443)]  # the address that was checked: the second lookup is never made
+    assert len(list(answers)) == 1
+
+
+def test_a_name_that_now_resolves_inside_the_network_is_refused_before_any_connection(monkeypatch):
+    monkeypatch.setattr(alerts.socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("169.254.169.254", 443))])
+    monkeypatch.setattr(alerts.socket, "create_connection", lambda *a, **k: pytest.fail("connected to a private address"))
+    with pytest.raises(ValueError, match="private network"):
+        alerts._post_sync("https://alerts.example.com/hook", b"{}", {})

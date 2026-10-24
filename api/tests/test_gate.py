@@ -103,7 +103,7 @@ def test_the_bar_is_the_callers_to_set_and_one_flaky_run_decides_a_result_on_the
     assert status == 1 and "at least 100%" in out
 
 
-def test_a_gate_that_cannot_finish_or_cannot_ask_is_a_failure_never_a_pass(ci, monkeypatch, capsys):
+def test_a_gate_that_cannot_finish_or_cannot_ask_is_a_failure_never_a_pass(ci, store, monkeypatch, capsys):
     client, keys, command = ci
     exp_id = proven_fix(client, keys)
     # a read key may not start an experiment: the pipeline must stop, not wave the deploy through
@@ -114,7 +114,11 @@ def test_a_gate_that_cannot_finish_or_cannot_ask_is_a_failure_never_a_pass(ci, m
     monkeypatch.setattr(cli, "ApiClient", lambda url, k: Shim(client, k))
     monkeypatch.setattr(cli, "run_gate", lambda *a, **kw: gate.run_gate(*a, **kw, sleep=lambda s: None, poll=0))
     assert cli.main(["gate", exp_id, "--timeout", "0"]) == 2
-    assert "Is your worker running?" in capsys.readouterr().out
+    assert "A worker is connected but has not taken a job" in capsys.readouterr().out  # one asked a moment ago
+    for k in store.api_keys:  # now every worker has been quiet for two minutes
+        k["last_seen_at"] = "2020-01-01T00:00:00+00:00"
+    assert cli.main(["gate", exp_id, "--timeout", "0"]) == 2
+    assert "No worker has asked for a job lately. Is your worker running?" in capsys.readouterr().out
     assert cli.main(["gate", exp_id, "--min-pass", "2"]) == 2
     assert cli.main(["gate", "nosuchexperiment"]) == 2
 

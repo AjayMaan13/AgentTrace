@@ -71,6 +71,8 @@ def run_gate(
         if exp["status"] not in _WAITING:
             return judge(exp, min_pass)
         if clock() >= deadline:
-            waiting = " Is your worker running?" if exp.get("mode") == "worker" and exp["status"] == "queued" else ""
+            waiting = ""
+            if exp.get("mode") == "worker" and exp["status"] == "queued":
+                waiting = " No worker has asked for a job lately. Is your worker running?" if not exp.get("workers_online") else " A worker is connected but has not taken a job."
             return GateResult(UNKNOWN, f"Experiment {target} had not finished after {int(timeout)} seconds.{waiting}", exp)
         sleep(poll)

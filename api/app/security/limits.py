@@ -91,5 +91,7 @@ async def enforce_daily_cap(user_id: str, now: datetime | None = None, needed: i
 key_limiter = SlidingWindowLimiter(5, 60)
 # Failure alerts: a loop that fails a thousand times must not send a thousand messages. Per workspace.
 alert_limiter = SlidingWindowLimiter(10, 60)
+# Any call made with a key (sending runs, a worker, an agent): 600 a minute per key, per server process.
+key_use_limiter = SlidingWindowLimiter(600, 60)
 webhook_limiter = SlidingWindowLimiter(10, 60)
 import_limiter = SlidingWindowLimiter(20, 60)

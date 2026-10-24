@@ -218,3 +218,14 @@ def test_webhooks_store_list_and_stop_and_a_run_is_claimed_for_an_alert_only_onc
     run(db.create_run(ws, rid, "w", "t"))
     assert run(db.claim_alert(ws, rid)) is True and run(db.claim_alert(ws, rid)) is False
     assert run(db.claim_alert("test-someone-else", rid)) is False
+
+
+def test_a_worker_key_that_asked_lately_is_counted_and_one_that_did_not_is_not(ws):
+    run(db.create_api_key(ws, "at_live_wrk1", hash_key("wrk1-" + ws), "u", ("worker",)))
+    run(db.create_api_key(ws, "at_live_wrk2", hash_key("wrk2-" + ws), "u", ("worker",)))
+    run(db.create_api_key(ws, "at_live_ing1", hash_key("ing1-" + ws), "u", ("ingest",)))
+    assert run(db.count_workers_since(ws, "2000-01-01T00:00:00+00:00")) == 0  # nobody has asked yet
+    for name in ("wrk1", "ing1"):
+        run(db.touch_key(run(db.key_for_hash(hash_key(f"{name}-{ws}")))["id"]))
+    assert run(db.count_workers_since(ws, "2000-01-01T00:00:00+00:00")) == 1  # one worker; the ingest key does not count
+    assert run(db.count_workers_since(ws, "2999-01-01T00:00:00+00:00")) == 0  # asked, but not lately enough

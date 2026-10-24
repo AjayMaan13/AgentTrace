@@ -112,8 +112,11 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
 
       {running && e.mode === "worker" && e.status === "queued" && (
         <p className="mt-4 rounded-lg border border-line bg-tile px-3 py-2 text-sm">
-          Waiting for your worker. This run is forked by the worker you run next to your code, because only your code can re-run your
-          agents. Start it with a key made for it on the Connect page. Nothing runs until it takes the first job.
+          {e.workers_online
+            ? "Your worker is connected and will take the first job in a few seconds."
+            : "Waiting for your worker, and none has asked for a job in the last minute."}{" "}
+          This run is forked by the worker you run next to your code, because only your code can re-run your agents.
+          {!e.workers_online && " Start it with a key made for it on the Connect page."}
         </p>
       )}
       {running && (

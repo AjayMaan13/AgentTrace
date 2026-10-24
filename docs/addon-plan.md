@@ -70,7 +70,7 @@ This is what turns us from a viewer into an add-on.
 - Tools that have side effects must be declared and mocked during a fork. A tool without a declaration is treated as side-effecting and is not run live. This is the existing rule, now enforced in the worker.
 - Limits per workspace stay: runs per experiment, per user, per minute, and the token ceiling. The worker also has its own local cap.
 
-**Built:** `Worker` in the SDK (outbound polling, `resume` entrypoint, your check as the oracle, `safe_to_rerun=True` required) and `/v1/worker/claim` and `/v1/worker/results` (compare-and-set claims, 10-minute leases, three tries, token ceiling). Data additions, all on schemaless tables: key `scopes`; experiment `mode`, `workflow`, `rev`, `base_state`, `start_idx`; tile `claim`, `claimed_at`, `attempts`. **Not built:** per-step start times, a hosted option for running a customer's code (by design there is none), worker heartbeats (the app says "waiting for your worker" but cannot tell whether one exists).
+**Built:** `Worker` in the SDK (outbound polling, `resume` entrypoint, your check as the oracle, `safe_to_rerun=True` required) and `/v1/worker/claim` and `/v1/worker/results` (compare-and-set claims, 10-minute leases, three tries, token ceiling). Data additions, all on schemaless tables: key `scopes`; experiment `mode`, `workflow`, `rev`, `base_state`, `start_idx`; tile `claim`, `claimed_at`, `attempts`. **Not built:** per-step start times, a hosted option for running a customer's code (by design there is none). Worker presence is built: a worker's job request marks its key as seen, and the app and the gate say whether a worker asked in the last minute (new field `last_seen_at` on a key).
 
 Done when: a toy workflow that is not in our registry can be forked end to end through a worker running on the dev machine, with a control arm and a treatment arm, and the result card shows k/N per arm and the p-value.
 
@@ -91,7 +91,7 @@ Done when: an agent connected over MCP can list a workspace's failed runs and ge
 - A CI gate: re-run a known failure's experiment and fail the deploy if it regresses.
 - Failure memory (Agent Memory) shared across the workspace's runs, as now.
 
-**Built:** alert webhooks (Slack or any address, signed, once per run, rate limited, address checked against private networks, opt-in likely cause) and `agenttrace gate` (re-runs a proven experiment, exit 0 held, 1 regressed, 2 could not tell). Failure memory was already shared. Data additions: table `webhook`, field `alerted_at` on a run. **Not built:** alerts for runs that never report a verdict, retries beyond one, email, pinning the connection to the checked address.
+**Built:** alert webhooks (Slack or any address, signed, once per run, rate limited, address checked against private networks, opt-in likely cause) and `agenttrace gate` (re-runs a proven experiment, exit 0 held, 1 regressed, 2 could not tell). Failure memory was already shared. Data additions: table `webhook`, field `alerted_at` on a run. **Not built:** alerts for runs that never report a verdict, retries beyond one, email. The connection is pinned to the address that passed the check, and every call made with a key is limited to 600 a minute.
 
 Done when: a failing run posts an alert with the suspect, and the CI check exits non-zero on a regression in a test.
 

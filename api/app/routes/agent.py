@@ -18,7 +18,7 @@ from app import db
 from app.auth import KeyPrincipal, key_with_scope
 from app.experiments.runner import view as experiment_view
 from app.models import ExperimentCreate
-from app.routes.experiments import launch
+from app.routes.experiments import launch, workers_online
 from app.routes.rca import run_rca
 from app.runtime import get_runtime
 
@@ -106,4 +106,5 @@ async def get_experiment(experiment_id: str, key: KeyPrincipal = Depends(key_wit
     if doc is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
     v = experiment_view(doc)
-    return {k: v[k] for k in ("id", "status", "mode", "parent_run", "fork_node_run_idx", "n", "control", "treatment", "stats", "error")}
+    return {**{k: v[k] for k in ("id", "status", "mode", "parent_run", "fork_node_run_idx", "n", "control", "treatment", "stats", "error")},
+            "workers_online": await workers_online(key.workspace, doc)}

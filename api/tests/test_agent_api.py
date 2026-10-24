@@ -138,3 +138,12 @@ def test_the_daily_limit_for_experiments_applies_to_a_key_like_a_person(world, m
     body = {"run_id": run_id, "fork_node_run_idx": 1, "edit": {"filter": "open"}, "n": 1}
     assert client.post("/v1/agent/experiments", json=body, headers=h(keys["spend"])).status_code == 202
     assert client.post("/v1/agent/experiments", json=body, headers=h(keys["spend"])).status_code == 429
+
+
+def test_a_key_that_asks_too_often_is_told_to_wait_and_other_keys_are_not_affected(world, monkeypatch):
+    client, keys = world
+    from app.security import limits
+    monkeypatch.setattr(limits.key_use_limiter, "max_calls", 3)
+    codes = [client.get("/v1/agent/runs/failed", headers=h(keys["read"])).status_code for _ in range(5)]
+    assert codes == [200, 200, 200, 429, 429]
+    assert client.get("/v1/agent/runs/failed", headers=h(keys["spend"])).status_code == 200  # a different key has its own allowance

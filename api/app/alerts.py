@@ -10,8 +10,8 @@ registered on this server. Otherwise the alert says why there is no suspect.
 An address a workspace admin types in is a request our server makes, so it is checked twice, when it is saved and
 when it is used: https only, the standard port, no user name in it, and the host must resolve only to public
 addresses (never loopback, a private network, link-local or the cloud metadata address). Slack addresses must be
-hooks.slack.com. Redirects are not followed. The remaining gap is a host whose address changes between that check
-and the connection (DNS rebinding); it is listed in SECURITY.md.
+hooks.slack.com. Redirects are not followed. The connection goes to the very address that passed the check, with
+the certificate checked against the name, so a name cannot be swung to a private address in between (DNS rebinding).
 
 A run alerts once, however many times its finish is sent. A workspace is limited to 10 alerts a minute.
 Run text is escaped for Slack, so a run cannot mention a channel or plant a link in the message.
@@ -20,12 +20,11 @@ Run text is escaped for Slack, so a run cannot mention a channel or plant a link
 import asyncio
 import hashlib
 import hmac
+import http.client
 import ipaddress
 import json
 import logging
 import socket
-import urllib.error
-import urllib.request
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -44,12 +43,27 @@ TIMEOUT_S = 5.0
 KINDS = ("slack", "generic")
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args: Any, **kwargs: Any) -> None:  # a redirect could lead somewhere we never checked
-        return None
+class _Pinned(http.client.HTTPSConnection):
+    """An https connection that goes to an address we already checked, not to whatever the name means by now."""
+
+    def __init__(self, host: str, ip: str) -> None:
+        super().__init__(host, timeout=TIMEOUT_S)
+        self._ip = ip
+
+    def connect(self) -> None:
+        sock = socket.create_connection((self._ip, self.port or 443), self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # the certificate is checked against the NAME
 
 
-_OPENER = urllib.request.build_opener(_NoRedirect)
+def _public_ip(host: str) -> str:
+    """The first address of `host`, if every address it has is public. ValueError otherwise."""
+    try:
+        found = [i[4][0] for i in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)]
+    except OSError:
+        raise ValueError("That address cannot be found.") from None
+    if not found or any(not ipaddress.ip_address(a).is_global for a in found):
+        raise ValueError("That address is on a private network, so it is not allowed.")
+    return found[0]
 
 
 def validate(url: str, kind: str) -> str:
@@ -74,14 +88,12 @@ def validate(url: str, kind: str) -> str:
             raise ValueError("A Slack address looks like https://hooks.slack.com/services/...")
         return host
     try:
-        found = [ipaddress.ip_address(host)]
-    except ValueError:
-        try:
-            found = [ipaddress.ip_address(i[4][0]) for i in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)]
-        except OSError:
-            raise ValueError("That address cannot be found.") from None
-    if not found or any(not ip.is_global for ip in found):
-        raise ValueError("That address is on a private network, so it is not allowed.")
+        if not ipaddress.ip_address(host).is_global:  # an address written out, such as 127.0.0.1 or [::1]
+            raise ValueError("That address is on a private network, so it is not allowed.")
+    except ValueError as exc:
+        if "private network" in str(exc):
+            raise
+        _public_ip(host)  # a name: every address it resolves to must be public
     return host
 
 
@@ -128,13 +140,17 @@ def slack_message(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _post_sync(url: str, body: bytes, headers: dict[str, str]) -> int:
-    request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", **headers}, method="POST")
+    """Post once. The name is resolved here, checked, and the connection goes to that very address, so it cannot be
+    swung to a private one between the check and the connection. A redirect is an answer like any other: not followed."""
+    parts = urlsplit(url)
+    conn = _Pinned(parts.hostname or "", _public_ip(parts.hostname or ""))
     try:
-        with _OPENER.open(request, timeout=TIMEOUT_S) as resp:
-            resp.read(1024)  # the answer is not used, and a big one is not read
-            return resp.status
-    except urllib.error.HTTPError as exc:
-        return exc.code
+        conn.request("POST", (parts.path or "/") + (f"?{parts.query}" if parts.query else ""), body, {"Content-Type": "application/json", **headers})
+        resp = conn.getresponse()
+        resp.read(1024)  # the answer is not used, and a big one is not read
+        return resp.status
+    finally:
+        conn.close()
 
 
 async def deliver(hook: dict[str, Any], payload: dict[str, Any]) -> int | None:
@@ -151,7 +167,10 @@ async def deliver(hook: dict[str, Any], payload: dict[str, Any]) -> int | None:
     for attempt in (1, 2):
         try:
             return await asyncio.to_thread(_post_sync, hook["url"], body, headers)
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except ValueError as exc:  # the name now points somewhere it must not
+            log.warning("webhook %s not sent: %s", hook.get("id"), exc)
+            return None
+        except (TimeoutError, OSError, http.client.HTTPException):
             if attempt == 2:
                 return None
             await asyncio.sleep(1)
