@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { LoadState } from "@/components/load-state";
-import { OutcomeBadge } from "@/components/badges";
-import { RunTimeline } from "@/components/run-timeline";
+import { ProjectBoard } from "@/components/project-board";
 import { SampleRunButton } from "@/components/sample-run-button";
-import { formatTime, formatTokens } from "@/lib/format";
 import type { Experiment, RunSummary } from "@/lib/types";
 import { useApiData } from "@/lib/use-api-data";
 
@@ -31,35 +29,7 @@ export function RunsList() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-8">
-            <section aria-label="Timeline" className="flex flex-col gap-3">
-              <div>
-                <h2 className="font-serif text-2xl">Timeline</h2>
-                <p className="text-muted">Every run in this project, oldest to newest. A fork branches down from the run it was made from.</p>
-              </div>
-              <RunTimeline runs={runs} experiments={forks.status === "ok" ? forks.data : []} />
-            </section>
-            <section aria-label="All runs" className="flex flex-col gap-3">
-              <h2 className="font-serif text-2xl">All runs</h2>
-              <ul className="card divide-y divide-line">
-                {runs.map((run) => (
-                  <li key={run.id}>
-                    <Link href={`/runs/${run.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-4 hover:bg-tile/60 focus-visible:bg-tile/60">
-                      <OutcomeBadge outcome={run.outcome} status={run.status} />
-                      <span className="font-medium">{run.workflow}</span>
-                      <span className="text-muted">
-                        {run.outcome === "fail" ? "Gave a wrong answer" : run.outcome === "pass" ? "Gave the right answer" : "Did not finish"}
-                      </span>
-                                            <span className="ml-auto text-[0.8125rem] text-muted">
-                        {formatTime(run.started_at)}
-                        {run.tokens_in !== undefined && ` · ${formatTokens((run.tokens_in ?? 0) + (run.tokens_out ?? 0))} tokens`}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
+          <ProjectBoard runs={runs} experiments={forks.status === "ok" ? forks.data : []} />
         )
       }
     </LoadState>

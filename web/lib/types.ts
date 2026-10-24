@@ -91,6 +91,7 @@ export type Experiment = {
   error: string | null;
   benchmark?: Benchmark | null; // present once a benchmark has been stored for this experiment
   created_at?: string | null; // when the fork was started
+  fork_agent?: string | null; // the agent that was changed (set by the forks list)
 };
 
 export type Candidate = {

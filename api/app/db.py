@@ -436,6 +436,18 @@ async def list_experiments(workspace: str, limit: int = 200) -> list[dict[str, A
     return [_row(r) for r in rows]
 
 
+async def agents_for_runs(run_ids: list[str]) -> dict[str, dict[int, str]]:
+    """Which agent ran as each agent turn of these runs: {run: {node_run_idx: agent}}. For labels only."""
+    if not run_ids:
+        return {}
+    async with connect() as c:
+        rows = await c.query("SELECT run, node_run_idx, agent FROM step WHERE run IN $ids", {"ids": run_ids})
+    out: dict[str, dict[int, str]] = {}
+    for r in rows:
+        out.setdefault(r["run"], {})[r["node_run_idx"]] = r["agent"]
+    return out
+
+
 async def list_experiments_for_runs(workspace: str, run_ids: list[str]) -> list[dict[str, Any]]:
     """Experiments started from any of these runs, oldest first."""
     if not run_ids:

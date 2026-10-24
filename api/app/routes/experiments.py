@@ -50,7 +50,10 @@ async def start_experiment(
 @router.get("/experiments")
 async def list_experiments(workspace: str = Depends(read_workspace)) -> list[dict[str, Any]]:
     """Every fork in the workspace, for the project timeline."""
-    return [view(e) for e in await db.list_experiments(workspace)]
+    experiments = await db.list_experiments(workspace)
+    agents = await db.agents_for_runs(sorted({e["parent_run"] for e in experiments}))
+    # The agent each fork changed, so a list of forks can say "planner" and not "agent step 1".
+    return [{**view(e), "fork_agent": agents.get(e["parent_run"], {}).get(e["fork_idx"])} for e in experiments]
 
 
 @router.get("/experiments/{experiment_id}")

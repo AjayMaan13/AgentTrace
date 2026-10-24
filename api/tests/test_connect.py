@@ -172,3 +172,10 @@ def test_each_press_makes_a_new_copy_and_another_workspace_never_sees_it(api, st
 
 def test_without_a_saved_example_the_button_says_so(api):
     assert api.post("/v1/runs/sample").status_code == 404
+
+
+def test_the_forks_list_says_which_agent_each_fork_changed(api, store):
+    parent = record(BUGGY_PLAN, "No open tickets.", draft(0), APPROVE)
+    run_experiment(parent, n=2)
+    forks = api.get("/v1/experiments").json()
+    assert forks[0]["fork_agent"] == "planner"  # the fork was made at the first agent
