@@ -30,8 +30,15 @@ async def get_run(run_id: str, workspace: str = Depends(read_workspace)) -> dict
     run = await db.get_run_with_steps(workspace, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    # Forking and root-cause analysis re-run the workflow's own code, so they need it registered here.
-    return {**run, "forkable": run["workflow"] in REGISTRY}
+    # A registered workflow is re-run here. Any other run can still be forked by the customer's own worker,
+    # if it recorded the state after an agent turn and the keys that turn wrote. Otherwise it is view only.
+    if run["workflow"] in REGISTRY:
+        mode = "server"
+    elif any(s.get("state_after") and s.get("writes") for s in run["steps"]):
+        mode = "worker"
+    else:
+        mode = None
+    return {**run, "forkable": mode is not None, "fork_mode": mode}
 
 
 @router.get("/runs/{run_id}/experiments")

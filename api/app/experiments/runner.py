@@ -21,6 +21,7 @@ from app.experiments.stats import fisher_exact_two_sided, wilson
 from app.rca.memory import is_verified, remember_experiment
 from app.rca.report import report_view
 from app.replay.fork import prepare_fork, run_fork
+from app.workflows.registry import REGISTRY
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,8 @@ def view(doc: dict[str, Any]) -> dict[str, Any]:
         "stats": doc.get("stats") or _stats(doc),
         "tokens_used": doc["tokens_used"], "token_ceiling": doc["token_ceiling"],
         "error": doc.get("error"), "created_at": doc.get("created_at"),
+        # "worker": run by the customer's own worker, which is waiting for jobs while the experiment is queued.
+        "mode": doc.get("mode", "server"),
     }
 
 
@@ -74,6 +77,12 @@ async def create_experiment(
     settings = get_settings()
     if not 1 <= n <= settings.max_n:
         raise ValueError(f"n must be between 1 and {settings.max_n}")
+    parent = await db.get_run_with_steps(workspace, parent_run_id)
+    if parent is not None and parent["workflow"] not in REGISTRY:
+        # Not one of ours to run: the customer's worker runs it. Same checks on the fork point, no live run here.
+        from app.experiments import worker  # noqa: PLC0415 (worker imports this module)
+
+        return await worker.create(workspace, {**parent, "id": parent_run_id}, fork_node_run_idx, edit, n, created_by)
     await prepare_fork(workspace, parent_run_id, fork_node_run_idx, edit, tools)
 
     experiment_id = uuid4().hex

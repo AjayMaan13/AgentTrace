@@ -2,7 +2,7 @@
 
 Goal: someone who already runs their own agents and orchestration (LangGraph, CrewAI, OpenAI Agents SDK, Claude Agent SDK, or a hand-rolled loop) can plug AgentTrace in without moving their system. It records their runs, tells them which agent probably broke one, and tests the fix on their own code.
 
-Status: P1 and P2 are built (2026-10-24, see `docs/integrations.md`); P3 to P6 are proposals. What P1 and P2 do not do is listed under each. The wording rules in `CLAUDE.md` still apply: recorded steps replay exactly, forked steps re-run live and are never called deterministic, results are k/N per arm plus a Fisher p-value labelled "directional".
+Status: P1 to P4 are built (2026-10-24, see `docs/integrations.md`); P5 and P6 are proposals. What P1 and P2 do not do is listed under each. The wording rules in `CLAUDE.md` still apply: recorded steps replay exactly, forked steps re-run live and are never called deterministic, results are k/N per arm plus a Fisher p-value labelled "directional".
 
 ## 1. Where we are
 
@@ -70,6 +70,8 @@ This is what turns us from a viewer into an add-on.
 - Tools that have side effects must be declared and mocked during a fork. A tool without a declaration is treated as side-effecting and is not run live. This is the existing rule, now enforced in the worker.
 - Limits per workspace stay: runs per experiment, per user, per minute, and the token ceiling. The worker also has its own local cap.
 
+**Built:** `Worker` in the SDK (outbound polling, `resume` entrypoint, your check as the oracle, `safe_to_rerun=True` required) and `/v1/worker/claim` and `/v1/worker/results` (compare-and-set claims, 10-minute leases, three tries, token ceiling). Data additions, all on schemaless tables: key `scopes`; experiment `mode`, `workflow`, `rev`, `base_state`, `start_idx`; tile `claim`, `claimed_at`, `attempts`. **Not built:** per-step start times, a hosted option for running a customer's code (by design there is none), worker heartbeats (the app says "waiting for your worker" but cannot tell whether one exists).
+
 Done when: a toy workflow that is not in our registry can be forked end to end through a worker running on the dev machine, with a control arm and a treatment arm, and the result card shows k/N per arm and the p-value.
 
 ### P4. Be callable by other agents (the observability-agent role)
@@ -78,6 +80,8 @@ Done when: a toy workflow that is not in our registry can be forked end to end t
 - Their orchestrator, or a coding agent, can call AgentTrace when something fails and get a ranked suspect with evidence.
 - The RCA agent only proposes. A person, or an explicit policy the customer sets, launches the experiment. It has no tool that acts on their system.
 - Workspace comes only from the API key or token, never from tool arguments.
+
+**Built:** `/v1/agent/*` (read and spend scopes, charged to the key), an MCP server in the SDK (stdlib, stdio; checked with the real `mcp` client), and the `agenttrace` command line. Tools: `list_failed_runs`, `get_run`, `rank_suspects`, `run_experiment`, `get_experiment`. **Not built:** a separate `propose_fork` (suspects already carry a proposed edit); root cause for workflows not registered on our server.
 
 Done when: an agent connected over MCP can list a workspace's failed runs and get a ranked suspect list for one of them, and a test shows it cannot read another workspace.
 

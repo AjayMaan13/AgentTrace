@@ -2,7 +2,9 @@
 
 AgentTrace records runs from agents it did not build, and lets you say whether each run is right. Three ways in, from least to most code. All of them need an ingest key (Connect your agents, then Make a key) and send it as a Bearer token.
 
-What you get today: the run drawn as a line of agents, what went in and out of each step, redaction before storage, and a right or wrong verdict from a check you write. What you do not get yet: forking, k/N experiments and root cause on your own workflow. Those re-run your agents, which needs the customer-hosted worker in `docs/addon-plan.md` (P3). A run from your harness is view only, and the app says so.
+What you get: the run drawn as a line of agents, what went in and out of each step, redaction before storage, a right or wrong verdict from a check you write, and (with a worker, section 4) forking and k/N experiments on your own agents. Root cause (section 5) still only works for workflows registered on our server.
+
+A key can do only what its scopes say: `ingest` sends runs (the default; keys made before scopes can only do this), `worker` takes fork jobs, `read` reads runs and experiments, `spend` may also start root-cause analyses and experiments, which cost tokens. An admin picks them when making the key.
 
 ## 1. OpenTelemetry (no code in your agents)
 
@@ -55,3 +57,53 @@ def check(state):
 - A check that raises, or returns something that is not a verdict, gives `error`, never a quiet pass. Only the exception type is stored, because the message may hold data. A secret in a reason is redacted, and a reason is cut at 300 characters.
 - A run with no check has **no verdict yet**. It is never shown as right.
 - This is a check written in code. It is not an AI judge, and it is not more than the function you wrote.
+
+## 4. Fork your own agents with a worker
+
+AgentTrace cannot re-run an agent it did not build, so a fork of your run is run by a worker **you** run next to your code. It connects out to the API (nothing connects in), so no inbound firewall rule is needed. Make a key with the `worker` scope.
+
+```python
+import asyncio
+from agenttrace_sdk import Worker
+
+async def resume(state, rec):
+    # state: the recording up to the fork point, with the change applied for the run that has it.
+    # Run your agents from here, record each turn, and return the final state.
+    state = await my_writer(state)
+    await rec.turn("writer", input=..., output=state["answer"], state_after=state, writes=["answer"])
+    return state
+
+worker = Worker("https://<your-api>", "at_live_...")      # a key with the worker scope
+worker.register("renewal-brief", resume, oracle=check, safe_to_rerun=True)
+asyncio.run(worker.run_forever())
+```
+
+- `oracle` is your check from section 3; it decides pass or fail for every attempt, in your process.
+- `safe_to_rerun` has no default and must be `True`. A fork runs your agents again, live, several times. We cannot see inside your code, so you are saying that is safe: no real emails or payments, or those tools are mocked.
+- A run can be forked if it recorded the state after an agent turn **and** the keys that turn wrote (`state_after=` and `writes=`; the LangGraph adapter records both). You may change only keys the agent wrote. A run from OpenTelemetry has neither, so it stays view only.
+- Start a fork from the run page as usual. The experiment waits ("Waiting for your worker") until the worker takes its first job. For N, the worker is given N jobs without the change and N with it. We record each attempt as a fork run (steps before the fork point replayed exactly from the recording, the change as one edited step, the rest live), count k of N each way and work out the Fisher p-value, labelled directional. Live steps are sampled, never deterministic.
+- A job is leased for 10 minutes. If the worker goes quiet, the job goes back in the queue; after three tries it counts as an error run. A resume function that raises is an error run too, and the worker carries on. Only the exception type is kept.
+- The state a worker receives is the stored copy, which is already redacted, and an edit with a secret-shaped value reaches the worker redacted. Keep secrets out of your shared state.
+- The token ceiling and the per-key and daily experiment limits apply as they do for a person.
+
+## 5. Let an agent ask AgentTrace (MCP and the command line)
+
+Make a key with `read` (look only) or `read` and `spend` (also rank suspects and start experiments, which cost tokens).
+
+```bash
+export AGENTTRACE_URL=https://<your-api>
+export AGENTTRACE_KEY=at_live_...
+agenttrace failed                                        # runs that came out wrong
+agenttrace show <run>                                    # its agents, steps and the verdict
+agenttrace suspects <run>                                # which step probably broke it (spend; costs tokens)
+agenttrace fork <run> <turn> --edit '{"filter": "open"}' -n 5    # test a change (spend; costs tokens)
+agenttrace result <experiment>                           # k of n each way, p-value (directional)
+agenttrace mcp                                           # the same, as MCP tools over stdio
+```
+
+For an assistant such as Claude Code or Claude Desktop, run `agenttrace-mcp` (or `python -m agenttrace_sdk.mcp`) as an MCP server with those two environment variables. Tools: `list_failed_runs`, `get_run`, `rank_suspects`, `run_experiment`, `get_experiment`. Checked with the real `mcp` Python client (2.3.0): handshake, tool list, calls, refusals and ping.
+
+- The tools only look and propose. They change nothing in your system, and an experiment re-runs only through your own worker.
+- Root cause (`rank_suspects`) works only for workflows registered on our server; for your own it says so. The proposed edit comes back with the suspect; use `run_experiment` to test it.
+- What comes back from a run is data recorded from other programs. Each run response says so and long text is clipped. An agent reading it must not follow instructions found in it.
+- The workspace comes from the key, never from an argument. A key cannot read another workspace.

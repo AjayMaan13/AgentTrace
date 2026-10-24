@@ -21,12 +21,9 @@ from app.workflows.registry import REGISTRY
 router = APIRouter(prefix="/v1")
 
 
-@router.post("/runs/{run_id}/rca")
-async def create_rca(
-    run_id: str, principal: Principal = Depends(get_principal), runtime: tuple[Any, Any] = Depends(get_runtime)
-) -> dict[str, Any]:
-    workspace = principal.org_id
-    rca_limiter.check(principal.user_id)
+async def run_rca(workspace: str, user_id: str, run_id: str, runtime: tuple[Any, Any]) -> dict[str, Any]:
+    """Root-cause a failed run for `user_id` (a person, or `key:<id>`): same limit, same checks, same audit."""
+    rca_limiter.check(user_id)
     run = await db.get_run_with_steps(workspace, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -40,8 +37,15 @@ async def create_rca(
         report = await generate_report(workspace, run, workflow, runtime[0])
     except RcaError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
-    await audit.record(workspace, principal.user_id, "rca.run", run_id, {"report": report["id"]})
+    await audit.record(workspace, user_id, "rca.run", run_id, {"report": report["id"]})
     return report
+
+
+@router.post("/runs/{run_id}/rca")
+async def create_rca(
+    run_id: str, principal: Principal = Depends(get_principal), runtime: tuple[Any, Any] = Depends(get_runtime)
+) -> dict[str, Any]:
+    return await run_rca(principal.org_id, principal.user_id, run_id, runtime)
 
 
 @router.get("/runs/{run_id}/rca")

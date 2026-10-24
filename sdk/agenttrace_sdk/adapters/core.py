@@ -50,19 +50,23 @@ class RunRecorder:
         model: str | None = None,
         tool_calls: list[dict[str, Any]] | None = None,
         state_after: dict[str, Any] | None = None,
+        reads: list[str] | None = None,
+        writes: list[str] | None = None,
         tokens_in: int = 0,
         tokens_out: int = 0,
         latency_ms: int = 0,
     ) -> None:
         """One turn of one agent: what it was given, what it answered, the tools it called, and the shared
-        state when it was done. Each tool call is {"name", "args", "result"} (args a dict)."""
+        state when it was done. Each tool call is {"name", "args", "result"} (args a dict). `writes` are the state
+        keys this agent changed: they are what a fork may edit, so a run without them cannot be forked."""
         self._turns += 1
         calls = tool_calls or []
         steps: list[Step] = []
 
         def new(kind: str, **fields: Any) -> Step:
             self._idx += 1
-            return Step(run=self.id, idx=self._idx, node_run_idx=self._turns, agent=agent, kind=kind, origin="recorded", **fields)
+            return Step(run=self.id, idx=self._idx, node_run_idx=self._turns, agent=agent, kind=kind, origin="recorded",
+                        reads=list(reads or []), writes=list(writes or []), **fields)
 
         # The model's own step comes first when the agent answered, or when it called no tools.
         if output is not None or input is not None or not calls:

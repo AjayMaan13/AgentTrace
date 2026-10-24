@@ -183,3 +183,25 @@ def test_audit_records_and_the_daily_experiment_count_work_against_the_real_data
         run(db.create_experiment(ws, new_id(), {"created_by": user, "created_at": when, "parent_run": "x"}))
     assert run(db.count_experiments_since(user, "2026-01-02T00:00:00+00:00")) == 2
     assert run(db.count_experiments_since(user, "2026-01-03T00:00:00+00:00")) == 0
+
+
+def test_a_key_made_before_scopes_can_only_ingest_and_a_new_one_keeps_its_scopes(ws):
+    run(db.create_api_key(ws, "at_live_old1", hash_key("old-" + ws), "user_1"))  # made without scopes
+    run(db.create_api_key(ws, "at_live_new1", hash_key("new-" + ws), "user_1", ("read", "spend")))
+    old, new = run(db.key_for_hash(hash_key("old-" + ws))), run(db.key_for_hash(hash_key("new-" + ws)))
+    assert old["workspace"] == ws and old["scopes"] == ["ingest"]
+    assert new["scopes"] == ["read", "spend"]
+    assert sorted(k["scopes"] for k in run(db.list_api_keys(ws))) == [["ingest"], ["read", "spend"]]
+
+
+def test_two_writers_cannot_both_take_the_same_experiment_revision(ws):
+    eid = new_id()
+    run(db.create_experiment(ws, eid, {"status": "queued", "rev": 0, "tiles": [{"arm": "control", "i": 1, "status": "queued"}]}))
+    won = run(db.update_experiment_if_rev(ws, eid, 0, {"status": "running", "rev": 1}))
+    lost = run(db.update_experiment_if_rev(ws, eid, 0, {"status": "running", "rev": 1}))  # read the same revision, too late
+    assert (won, lost) == (True, False)
+    # an experiment made before `rev` existed counts as revision 0
+    old = new_id()
+    run(db.create_experiment(ws, old, {"status": "queued", "tiles": []}))
+    assert run(db.update_experiment_if_rev(ws, old, 0, {"rev": 1})) is True
+    assert run(db.update_experiment_if_rev(ws, "nosuchexperiment", 0, {"rev": 1})) is False

@@ -120,12 +120,14 @@ async def upsert_workspace(workspace: str, name: str) -> None:
         )
 
 
-async def create_api_key(workspace: str, prefix: str, sha256: str, created_by: str) -> None:
+async def create_api_key(
+    workspace: str, prefix: str, sha256: str, created_by: str, scopes: tuple[str, ...] = ("ingest",)
+) -> None:
     async with connect() as c:
         await c.query(
             "CREATE api_key CONTENT $d",
             {"d": {"workspace": workspace, "prefix": prefix, "sha256": sha256, "created_by": created_by,
-                   "created_at": _now()}},
+                   "scopes": list(scopes), "created_at": _now()}},
         )
 
 
@@ -133,10 +135,10 @@ async def list_api_keys(workspace: str) -> list[dict[str, Any]]:
     """A workspace's ingest keys, newest first. Only the display prefix is ever stored or returned."""
     async with connect() as c:
         rows = await c.query(
-            "SELECT id, prefix, created_by, created_at, revoked_at FROM api_key WHERE workspace = $ws "
+            "SELECT id, prefix, scopes, created_by, created_at, revoked_at FROM api_key WHERE workspace = $ws "
             "ORDER BY created_at DESC", {"ws": workspace},
         )
-    return [_row(r) for r in rows]
+    return [{**_row(r), "scopes": r.get("scopes") or ["ingest"]} for r in rows]  # a key from before scopes could only send runs
 
 
 async def revoke_api_key(workspace: str, key_id: str) -> bool:
@@ -148,13 +150,15 @@ async def revoke_api_key(workspace: str, key_id: str) -> bool:
     return bool(rows)
 
 
-async def workspace_for_key_hash(sha256: str) -> str | None:
-    """The workspace of a non-revoked ingest key, or None."""
+async def key_for_hash(sha256: str) -> dict[str, Any] | None:
+    """A non-revoked key's id, workspace and scopes, or None. A key made before scopes existed can only ingest."""
     async with connect() as c:
         rows = await c.query(
-            "SELECT workspace FROM api_key WHERE sha256 = $h AND revoked_at = NONE", {"h": sha256}
+            "SELECT id, workspace, scopes FROM api_key WHERE sha256 = $h AND revoked_at = NONE", {"h": sha256}
         )
-    return rows[0]["workspace"] if rows else None
+    if not rows:
+        return None
+    return {"id": _row(rows[0])["id"], "workspace": rows[0]["workspace"], "scopes": rows[0].get("scopes") or ["ingest"]}
 
 
 # --- runs and steps --------------------------------------------------------------------------
@@ -306,6 +310,17 @@ async def update_experiment(workspace: str, experiment_id: str, merge: dict[str,
             "UPDATE type::record('experiment', $id) MERGE $m WHERE workspace = $ws",
             {"id": experiment_id, "m": merge, "ws": workspace},
         )
+
+
+async def update_experiment_if_rev(workspace: str, experiment_id: str, rev: int, merge: dict[str, Any]) -> bool:
+    """Merge into an experiment only if nobody changed it since `rev` was read: two workers claiming at once
+    cannot both take the same tile. The merge must set the next rev. True if it applied."""
+    async with connect() as c:
+        rows = await c.query(
+            "UPDATE type::record('experiment', $id) MERGE $m WHERE workspace = $ws AND (rev ?? 0) = $rev RETURN AFTER",
+            {"id": experiment_id, "m": merge, "ws": workspace, "rev": rev},
+        )
+    return bool(rows)
 
 
 async def get_experiment(workspace: str, experiment_id: str) -> dict[str, Any] | None:

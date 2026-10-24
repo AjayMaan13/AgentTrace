@@ -10,6 +10,7 @@ from agenttrace_sdk.recorder import (
     trace_run,
 )
 from agenttrace_sdk.redaction import redact
+from agenttrace_sdk.worker import Worker
 from agenttrace_sdk.sinks import HttpSink, HttpSinkError, ListSink, Sink
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "TracedLLM",
     "UndeclaredWriteError",
     "Verdict",
+    "Worker",
     "node",
     "redact",
     "run_oracle",

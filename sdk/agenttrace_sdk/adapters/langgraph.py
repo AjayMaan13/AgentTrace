@@ -72,6 +72,6 @@ async def record_langgraph(
             for node, update in _updates(chunk):
                 before = state
                 state = _merge(state, update, reducers or {})
-                await rec.turn(node, input=before, output=update, state_after=state)
+                await rec.turn(node, input=before, output=update, state_after=state, writes=list(update) if isinstance(update, dict) else [])
         rec.final_state = state
     return rec.id

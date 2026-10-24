@@ -60,3 +60,19 @@ class ExperimentCreate(BaseModel):
     # forks at the same point with no edit, so an experiment needs one.
     edit: dict[str, Any] = Field(min_length=1)
     n: int = Field(ge=1, le=100)  # the real ceiling is MAX_N, enforced with a clear message
+
+
+class WorkerClaim(BaseModel):
+    workflows: list[str] = Field(min_length=1, max_length=50)  # what this worker can run
+    worker: str = Field(default="worker", max_length=64)
+
+
+class WorkerResult(BaseModel):
+    experiment: str
+    claim: str
+    arm: Literal["control", "treatment"]
+    i: int = Field(ge=1)
+    outcome: Literal["pass", "fail", "error"]
+    oracle_detail: dict[str, Any] | None = None
+    # The live turns the worker ran. Numbered from 1 here; the server places them after the fork point.
+    steps: list[Step] = Field(default=[], max_length=300)

@@ -1,5 +1,6 @@
 """In-memory stand-in for the parts of app.db that routes and forks use (fast, offline)."""
 
+import copy
 from typing import Any
 
 from app import db
@@ -19,18 +20,21 @@ class FakeDB:
         self.fail_audit = False
         self.api_keys: list[dict[str, Any]] = []
 
-    async def workspace_for_key_hash(self, h):
-        if any(k["sha256"] == h and k.get("revoked_at") for k in self.api_keys):
-            return None
-        return self.keys.get(h)
+    async def key_for_hash(self, h):
+        for k in self.api_keys:
+            if k["sha256"] == h and not k.get("revoked_at"):
+                return {"id": k["id"], "workspace": k["workspace"], "scopes": k["scopes"]}
+        if h in self.keys and not any(k["sha256"] == h for k in self.api_keys):  # a key seeded straight into the store
+            return {"id": "seeded", "workspace": self.keys[h], "scopes": ["ingest"]}
+        return None
 
     async def upsert_workspace(self, ws, name):
         return None
 
-    async def create_api_key(self, ws, prefix, sha256, created_by):
+    async def create_api_key(self, ws, prefix, sha256, created_by, scopes=("ingest",)):
         self.keys[sha256] = ws
         self.api_keys.append({"id": f"k{len(self.api_keys) + 1}", "workspace": ws, "prefix": prefix, "sha256": sha256,
-                              "created_by": created_by, "created_at": f"2026-01-01T00:00:{len(self.api_keys):02d}"})
+                              "created_by": created_by, "scopes": list(scopes), "created_at": f"2026-01-01T00:00:{len(self.api_keys):02d}"})
 
     async def list_api_keys(self, ws):
         return [{k: v for k, v in key.items() if k not in ("sha256", "workspace")}
@@ -99,9 +103,16 @@ class FakeDB:
         if self.experiments.get(experiment_id, {}).get("workspace") == ws:
             self.experiments[experiment_id].update(merge)
 
+    async def update_experiment_if_rev(self, ws, experiment_id, rev, merge):
+        e = self.experiments.get(experiment_id)
+        if not e or e["workspace"] != ws or (e.get("rev") or 0) != rev:
+            return False
+        e.update(copy.deepcopy(merge))
+        return True
+
     async def get_experiment(self, ws, experiment_id):
         e = self.experiments.get(experiment_id)
-        return {**e} if e and e["workspace"] == ws else None
+        return copy.deepcopy(e) if e and e["workspace"] == ws else None
 
     async def create_tested_edge(self, experiment_id, run_id):
         self.tested.append((experiment_id, run_id))
@@ -208,9 +219,9 @@ class FakeDB:
         return max(mine, key=lambda r: r["created_at"]) if mine else None
 
 
-DB_FUNCTIONS = ("upsert_workspace", "create_api_key", "list_api_keys", "revoke_api_key", "list_experiments", "workspace_for_key_hash", "create_run", "run_exists", "add_steps", "finish_run",
+DB_FUNCTIONS = ("upsert_workspace", "create_api_key", "list_api_keys", "revoke_api_key", "list_experiments", "key_for_hash", "create_run", "run_exists", "add_steps", "finish_run",
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
-                "create_experiment", "update_experiment", "get_experiment", "create_tested_edge",
+                "create_experiment", "update_experiment", "update_experiment_if_rev", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",
                 "get_featured_run_id", "list_featured_experiments", "list_experiments_for_run", "list_experiments_for_runs", "agents_for_runs", "list_memory_scopes", "create_audit", "list_audit",
                 "count_experiments_since", "delete_run_cascade", "update_rca_report",

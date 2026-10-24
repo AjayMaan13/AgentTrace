@@ -9,6 +9,10 @@ description = "AgentTrace recorder: turn a multi-agent workflow run into redacte
 requires-python = ">=3.11"
 dependencies = [] # stdlib only: the SDK must be importable by external agents with no extras
 
+[project.scripts]
+agenttrace = "agenttrace_sdk.cli:main"
+agenttrace-mcp = "agenttrace_sdk.mcp:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 

@@ -163,6 +163,7 @@ export function TestFixPanel({
         </button>
         <p role="alert" className="min-h-5 text-muted">{apiError ? <span className="text-bad">{apiError}</span> : problem}</p>
         <p className="text-[0.8125rem] text-muted">
+          {run.fork_mode === "worker" && "This run is forked by the worker you run next to your code, so start it first (Connect your agents). "}
           You can change what an agent wrote. You cannot yet change its instructions and run it again; that needs your workflow code.
           Runs after the agent are live, so results can vary. That is why each side is repeated.
         </p>

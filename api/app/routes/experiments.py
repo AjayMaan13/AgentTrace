@@ -18,21 +18,17 @@ from app.security.limits import enforce_daily_cap, experiment_limiter, launch_lo
 router = APIRouter(prefix="/v1")
 
 
-@router.post("/experiments", status_code=202)
-async def start_experiment(
-    body: ExperimentCreate,
-    principal: Principal = Depends(get_principal),
-    runtime: tuple[Any, Any] = Depends(get_runtime),
-) -> dict[str, str]:
+async def launch(workspace: str, user_id: str, body: ExperimentCreate, runtime: tuple[Any, Any]) -> str:
+    """Start an experiment for `user_id` (a person, or `key:<id>` for an API key): the same limits, the same
+    errors and the same audit record whoever asks."""
     client, tools = runtime
-    workspace = principal.org_id
-    experiment_limiter.check(principal.user_id)
+    experiment_limiter.check(user_id)
     try:
         async with launch_lock:
-            await enforce_daily_cap(principal.user_id)
+            await enforce_daily_cap(user_id)
             experiment_id = await create_experiment(
                 workspace, body.run_id, body.fork_node_run_idx, body.edit, body.n,
-                client=client, tools=tools, created_by=principal.user_id,
+                client=client, tools=tools, created_by=user_id,
             )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
@@ -40,11 +36,20 @@ async def start_experiment(
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except (ModelPinError, SideEffectBlocked) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
-    await audit.record(workspace, principal.user_id, "experiment.launch", experiment_id, {
+    await audit.record(workspace, user_id, "experiment.launch", experiment_id, {
         "parent_run": body.run_id, "fork_node_run_idx": body.fork_node_run_idx, "n": body.n,
         "edit_keys": sorted(body.edit),
     })
-    return {"id": experiment_id}
+    return experiment_id
+
+
+@router.post("/experiments", status_code=202)
+async def start_experiment(
+    body: ExperimentCreate,
+    principal: Principal = Depends(get_principal),
+    runtime: tuple[Any, Any] = Depends(get_runtime),
+) -> dict[str, str]:
+    return {"id": await launch(principal.org_id, principal.user_id, body, runtime)}
 
 
 @router.get("/experiments")

@@ -50,7 +50,11 @@ export type OracleDetail = {
   verdict?: { kind: "code"; name: string; passed: boolean | null; reason: string };
 };
 
-export type Run = RunSummary & { oracle_detail?: OracleDetail; steps: Step[]; forkable?: boolean }; // forkable: false = view only
+export type Run = RunSummary & {
+  oracle_detail?: OracleDetail; steps: Step[];
+  forkable?: boolean; // false = view only
+  fork_mode?: "server" | "worker" | null; // who re-runs a fork: this server, or the owner's own worker
+};
 
 export type Tile = {
   arm: "control" | "treatment";
@@ -94,6 +98,7 @@ export type Experiment = {
   benchmark?: Benchmark | null; // present once a benchmark has been stored for this experiment
   created_at?: string | null; // when the fork was started
   fork_agent?: string | null; // the agent that was changed (set by the forks list)
+  mode?: "server" | "worker"; // worker: the owner's own worker runs the jobs, and the experiment waits for it
 };
 
 export type Candidate = {

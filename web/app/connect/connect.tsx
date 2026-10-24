@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { SampleRunButton } from "@/components/sample-run-button";
 import { ApiError, useApi } from "@/lib/api";
+import { describeScopes, KEY_KINDS, usage } from "@/lib/keys";
 import { useApiData } from "@/lib/use-api-data";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://your-agenttrace-api";
 
-type KeyRow = { id: string; prefix: string; created_at?: string; revoked_at?: string | null };
+type KeyRow = { id: string; prefix: string; scopes?: string[]; created_at?: string; revoked_at?: string | null };
 
 export function snippet(key: string): string {
   return `import asyncio
@@ -59,6 +60,8 @@ export function Connect() {
   const [tick, setTick] = useState(0);
   const keys = useApiData<KeyRow[]>(`/v1/keys?k=${tick}`);
   const [fresh, setFresh] = useState<string | null>(null);
+  const [kindId, setKindId] = useState(KEY_KINDS[0].id);
+  const [freshKind, setFreshKind] = useState(KEY_KINDS[0]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -67,8 +70,10 @@ export function Connect() {
     setBusy(true);
     setError(null);
     try {
-      const { key } = await api<{ key: string }>("/v1/keys", { method: "POST" });
+      const kind = KEY_KINDS.find((k) => k.id === kindId) ?? KEY_KINDS[0];
+      const { key } = await api<{ key: string }>("/v1/keys", { method: "POST", body: JSON.stringify({ scopes: kind.scopes }) });
       setFresh(key);
+      setFreshKind(kind);
       setTick((t) => t + 1);
     } catch (err) {
       setError(err instanceof ApiError || err instanceof Error ? err.message : "Request failed");
@@ -114,7 +119,15 @@ export function Connect() {
           <h2 className="font-serif text-2xl">1. Make a key</h2>
           <p className="mt-1 max-w-[60ch] text-muted">
             A key lets your code send runs to this workspace. We show it once, so copy it now. We keep only a fingerprint.
+            A key can do only what you choose here.
           </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <label htmlFor="key-kind" className="font-medium">What is this key for?</label>
+          <select id="key-kind" value={kindId} onChange={(e) => setKindId(e.target.value)} className="max-w-md rounded-lg border border-line bg-tile px-3 py-2">
+            {KEY_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+          </select>
+          <p className="max-w-[60ch] text-[0.8125rem] text-muted">{(KEY_KINDS.find((k) => k.id === kindId) ?? KEY_KINDS[0]).hint}</p>
         </div>
         <div>
           <button type="button" className="btn btn-primary" onClick={mint} disabled={busy}>
@@ -127,6 +140,7 @@ export function Connect() {
             <p className="font-medium text-good">Your key. It will not be shown again.</p>
             <code className="block rounded-lg bg-tile p-3 font-mono text-[0.8125rem] [overflow-wrap:anywhere]">{fresh}</code>
             <div><button type="button" className="btn" onClick={() => copy("key", fresh)}>{copied === "key" ? "Copied" : "Copy the key"}</button></div>
+            {usage(freshKind, fresh, API_URL) && <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-tile p-3 font-mono text-[0.8125rem] leading-relaxed">{usage(freshKind, fresh, API_URL)}</pre>}
           </div>
         )}
         {keys.status === "ok" && keys.data.length > 0 && (
@@ -134,7 +148,7 @@ export function Connect() {
             {keys.data.map((k) => (
               <li key={k.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <code className="font-mono text-[0.8125rem]">{k.prefix}…</code>
-                <span className="text-muted">{k.revoked_at ? "stopped" : "working"}</span>
+                <span className="text-muted">{k.revoked_at ? "stopped" : "working"} · can {describeScopes(k.scopes)}</span>
                 {k.created_at && <span className="text-[0.8125rem] text-muted">made {new Date(k.created_at).toLocaleDateString()}</span>}
                 {!k.revoked_at && <button type="button" className="btn ml-auto" onClick={() => revoke(k.id)}>Stop this key</button>}
               </li>

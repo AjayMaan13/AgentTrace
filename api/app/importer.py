@@ -26,6 +26,8 @@ class ImportStep(BaseModel):
     tool_result: Any = None
     node: int | None = Field(default=None, ge=1)  # steps with the same number are one agent turn
     state_after: dict[str, Any] | None = None  # the shared state when this agent's turn ended
+    reads: list[str] = Field(default=[], max_length=100)  # state keys the agent read
+    writes: list[str] = Field(default=[], max_length=100)  # state keys it wrote: what a fork may change
     tokens_in: int = Field(default=0, ge=0)
     tokens_out: int = Field(default=0, ge=0)
     latency_ms: int = Field(default=0, ge=0)
@@ -60,7 +62,7 @@ def to_steps(run: ImportRun) -> list[Step]:
         out.append(Step(
             idx=i + 1, node_run_idx=order[t], agent=s.agent, kind=s.kind, origin="recorded", model=s.model,
             input=s.input, output=s.output, tool_name=s.tool_name, tool_args=s.tool_args, tool_result=s.tool_result,
-            state_after=state[t] if last[t] == i else None, tokens_in=s.tokens_in, tokens_out=s.tokens_out,
+            state_after=state[t] if last[t] == i else None, reads=s.reads, writes=s.writes, tokens_in=s.tokens_in, tokens_out=s.tokens_out,
             latency_ms=s.latency_ms,
         ))
     return out

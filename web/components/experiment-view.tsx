@@ -110,6 +110,12 @@ function ResultCard({ experiment: e, finished }: { experiment: Experiment; finis
         </p>
       )}
 
+      {running && e.mode === "worker" && e.status === "queued" && (
+        <p className="mt-4 rounded-lg border border-line bg-tile px-3 py-2 text-sm">
+          Waiting for your worker. This run is forked by the worker you run next to your code, because only your code can re-run your
+          agents. Start it with a key made for it on the Connect page. Nothing runs until it takes the first job.
+        </p>
+      )}
       {running && (
         <div className="mt-4">
           <p className="text-sm font-medium">

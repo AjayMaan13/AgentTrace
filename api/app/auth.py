@@ -2,6 +2,7 @@
 request body.
 
   ingest_workspace  SDK -> API: `Authorization: Bearer at_live_...`, looked up by sha256.
+  key_with_scope    the same kind of key, for a worker or an agent: it must hold the scope (worker, read, spend).
   get_principal     browser -> API: a Clerk session JWT, verified against Clerk's JWKS.
   read_workspace    the caller's workspace = their ACTIVE Clerk organization id.
 """
@@ -38,14 +39,44 @@ def _bearer(authorization: str | None) -> str:
 
 # --- SDK ingest ------------------------------------------------------------------------------
 
-async def ingest_workspace(authorization: str | None = Header(default=None)) -> str:
+@dataclass(frozen=True)
+class KeyPrincipal:
+    workspace: str
+    key_id: str
+    scopes: tuple[str, ...]
+
+    @property
+    def user_id(self) -> str:
+        """Who limits and the audit log charge: the key, since no person is signed in."""
+        return f"key:{self.key_id}"
+
+
+async def _key(authorization: str | None) -> KeyPrincipal:
     key = _bearer(authorization)
     if not key.startswith(KEY_PREFIX):
         raise _unauthorized("Malformed ingest key")
-    workspace = await db.workspace_for_key_hash(hash_key(key))
-    if workspace is None:
+    found = await db.key_for_hash(hash_key(key))
+    if found is None:
         raise _unauthorized("Invalid ingest key")
-    return workspace
+    return KeyPrincipal(found["workspace"], found["id"], tuple(found["scopes"]))
+
+
+def key_with_scope(scope: str):
+    """A dependency: the caller holds a key that may do `scope`. What a key may do is chosen when an admin
+    makes it, so a key that only sends runs cannot read them, and nothing but a `spend` key can cost tokens."""
+    async def dependency(authorization: str | None = Header(default=None)) -> KeyPrincipal:
+        principal = await _key(authorization)
+        if scope not in principal.scopes:
+            raise HTTPException(status_code=403, detail=f"This key cannot do that. Make a key with the '{scope}' scope.")
+        return principal
+    return dependency
+
+
+async def ingest_workspace(authorization: str | None = Header(default=None)) -> str:
+    principal = await _key(authorization)
+    if "ingest" not in principal.scopes:
+        raise HTTPException(status_code=403, detail="This key cannot send runs. Make a key with the 'ingest' scope.")
+    return principal.workspace
 
 
 # --- Clerk -----------------------------------------------------------------------------------
