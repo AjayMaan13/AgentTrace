@@ -2,7 +2,7 @@
 
 Goal: someone who already runs their own agents and orchestration (LangGraph, CrewAI, OpenAI Agents SDK, Claude Agent SDK, or a hand-rolled loop) can plug AgentTrace in without moving their system. It records their runs, tells them which agent probably broke one, and tests the fix on their own code.
 
-Status: P1 to P4 are built (2026-10-24, see `docs/integrations.md`); P5 and P6 are proposals. What P1 and P2 do not do is listed under each. The wording rules in `CLAUDE.md` still apply: recorded steps replay exactly, forked steps re-run live and are never called deterministic, results are k/N per arm plus a Fisher p-value labelled "directional".
+Status: P1 to P6 are built (2026-10-24, see `docs/integrations.md` and `docs/self-host.md`); each section lists what it does not do. What P1 and P2 do not do is listed under each. The wording rules in `CLAUDE.md` still apply: recorded steps replay exactly, forked steps re-run live and are never called deterministic, results are k/N per arm plus a Fisher p-value labelled "directional".
 
 ## 1. Where we are
 
@@ -91,6 +91,8 @@ Done when: an agent connected over MCP can list a workspace's failed runs and ge
 - A CI gate: re-run a known failure's experiment and fail the deploy if it regresses.
 - Failure memory (Agent Memory) shared across the workspace's runs, as now.
 
+**Built:** alert webhooks (Slack or any address, signed, once per run, rate limited, address checked against private networks, opt-in likely cause) and `agenttrace gate` (re-runs a proven experiment, exit 0 held, 1 regressed, 2 could not tell). Failure memory was already shared. Data additions: table `webhook`, field `alerted_at` on a run. **Not built:** alerts for runs that never report a verdict, retries beyond one, email, pinning the connection to the checked address.
+
 Done when: a failing run posts an alert with the suspect, and the CI check exits non-zero on a regression in a test.
 
 ### P6. Packaging and trust
@@ -99,6 +101,8 @@ Done when: a failing run posts an alert with the suspect, and the CI check exits
 - A compatibility table in the docs: which harnesses, how they connect, what works (record only, or record and fork).
 - A self-host or bring-your-own-database option for teams that cannot send traces out.
 - Update `SECURITY.md` for the worker, the oracle webhook and the MCP server.
+
+**Built:** a compatibility table and a PyPI-less install line in `docs/integrations.md`, `docs/self-host.md` (written from the code, not yet followed on a clean machine), and `SECURITY.md` for the worker, agent routes, webhooks and the gate. **Not built:** a PyPI release (the SDK installs from git), a Docker image or compose file, adapters for CrewAI, the OpenAI Agents SDK and the Claude Agent SDK, the oracle webhook and the LLM judge.
 
 ## 4. What to build before the submission
 

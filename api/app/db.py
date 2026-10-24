@@ -161,6 +161,41 @@ async def key_for_hash(sha256: str) -> dict[str, Any] | None:
     return {"id": _row(rows[0])["id"], "workspace": rows[0]["workspace"], "scopes": rows[0].get("scopes") or ["ingest"]}
 
 
+# --- alert webhooks ---------------------------------------------------------------------------
+
+async def create_webhook(workspace: str, doc: dict[str, Any]) -> str:
+    """Store a webhook. Its address is a secret (a Slack address lets anyone post), so it is only ever read
+    back by the sender and shown to people as a host and the last few characters."""
+    async with connect() as c:
+        rows = await c.query("CREATE webhook CONTENT $d", {"d": {**doc, "workspace": workspace, "created_at": _now()}})
+    return _row(rows[0])["id"]
+
+
+async def list_webhooks(workspace: str) -> list[dict[str, Any]]:
+    async with connect() as c:
+        rows = await c.query("SELECT * FROM webhook WHERE workspace = $ws ORDER BY created_at DESC", {"ws": workspace})
+    return [_row(r) for r in rows]
+
+
+async def revoke_webhook(workspace: str, webhook_id: str) -> bool:
+    async with connect() as c:
+        rows = await c.query(
+            "UPDATE type::record('webhook', $id) SET revoked_at = $now WHERE workspace = $ws AND revoked_at = NONE RETURN AFTER",
+            {"id": webhook_id, "ws": workspace, "now": _now()},
+        )
+    return bool(rows)
+
+
+async def claim_alert(workspace: str, run_id: str) -> bool:
+    """True the first time it is called for a run, so a retried finish does not alert twice."""
+    async with connect() as c:
+        rows = await c.query(
+            "UPDATE type::record('run', $id) SET alerted_at = $now WHERE workspace = $ws AND alerted_at = NONE RETURN AFTER",
+            {"id": run_id, "ws": workspace, "now": _now()},
+        )
+    return bool(rows)
+
+
 # --- runs and steps --------------------------------------------------------------------------
 
 async def create_run(
@@ -580,4 +615,5 @@ async def purge_workspace(workspace: str) -> None:
         await c.query("DELETE audit WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE benchmark WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE api_key WHERE workspace = $ws", {"ws": workspace})
+        await c.query("DELETE webhook WHERE workspace = $ws", {"ws": workspace})
         await c.query("DELETE type::record('workspace', $ws)", {"ws": workspace})

@@ -89,4 +89,7 @@ async def enforce_daily_cap(user_id: str, now: datetime | None = None, needed: i
 
 # Minting keys and importing runs are cheap, but not free: a few a minute per person is plenty.
 key_limiter = SlidingWindowLimiter(5, 60)
+# Failure alerts: a loop that fails a thousand times must not send a thousand messages. Per workspace.
+alert_limiter = SlidingWindowLimiter(10, 60)
+webhook_limiter = SlidingWindowLimiter(10, 60)
 import_limiter = SlidingWindowLimiter(20, 60)

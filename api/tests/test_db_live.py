@@ -205,3 +205,16 @@ def test_two_writers_cannot_both_take_the_same_experiment_revision(ws):
     run(db.create_experiment(ws, old, {"status": "queued", "tiles": []}))
     assert run(db.update_experiment_if_rev(ws, old, 0, {"rev": 1})) is True
     assert run(db.update_experiment_if_rev(ws, "nosuchexperiment", 0, {"rev": 1})) is False
+
+
+def test_webhooks_store_list_and_stop_and_a_run_is_claimed_for_an_alert_only_once(ws):
+    hid = run(db.create_webhook(ws, {"url": "https://hooks.slack.com/services/T/B/X", "kind": "slack", "include_suspect": False, "created_by": "u"}))
+    other = run(db.create_webhook(ws, {"url": "https://example.com/x", "kind": "generic", "include_suspect": True, "created_by": "u"}))
+    listed = run(db.list_webhooks(ws))
+    assert {h["id"] for h in listed} == {hid, other} and all(h["workspace"] == ws for h in listed)
+    assert run(db.revoke_webhook(ws, hid)) is True and run(db.revoke_webhook(ws, hid)) is False
+    assert run(db.revoke_webhook("test-someone-else", other)) is False  # another workspace cannot stop it
+    rid = new_id()
+    run(db.create_run(ws, rid, "w", "t"))
+    assert run(db.claim_alert(ws, rid)) is True and run(db.claim_alert(ws, rid)) is False
+    assert run(db.claim_alert("test-someone-else", rid)) is False

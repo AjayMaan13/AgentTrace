@@ -35,6 +35,8 @@ def fresh_rate_limits():
     limits.rca_limiter._calls.clear()
     limits.key_limiter._calls.clear()
     limits.import_limiter._calls.clear()
+    limits.alert_limiter._calls.clear()
+    limits.webhook_limiter._calls.clear()
 
 
 @pytest.fixture(autouse=True)

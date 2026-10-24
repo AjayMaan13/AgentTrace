@@ -4,9 +4,9 @@ redacted again here and clamped to 32 KB per text field."""
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from app import db
+from app import alerts, db
 from app.auth import ingest_workspace
 from app.models import RunCreate, RunFinish, Step, StepBatch
 from app.security.limits import clamp_strings
@@ -47,9 +47,11 @@ async def add_steps(
 
 @router.post("/runs/{run_id}/finish")
 async def finish_run(
-    run_id: str, body: RunFinish, workspace: str = Depends(ingest_workspace)
+    run_id: str, body: RunFinish, background: BackgroundTasks, workspace: str = Depends(ingest_workspace)
 ) -> dict[str, str]:
     detail, _ = redact(body.oracle_detail) if body.oracle_detail is not None else (None, [])
     if not await db.finish_run(workspace, run_id, body.status, body.outcome, detail):
         raise HTTPException(status_code=404, detail="Run not found")
+    if body.outcome in ("fail", "error"):
+        background.add_task(alerts.notify_failure, workspace, run_id)  # after the answer: an alert never delays a run
     return {"id": run_id, "status": body.status}

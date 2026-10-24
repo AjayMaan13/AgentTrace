@@ -19,6 +19,7 @@ class FakeDB:
         self.benchmarks: list[dict[str, Any]] = []
         self.fail_audit = False
         self.api_keys: list[dict[str, Any]] = []
+        self.webhooks: dict[str, dict[str, Any]] = {}
 
     async def key_for_hash(self, h):
         for k in self.api_keys:
@@ -27,6 +28,28 @@ class FakeDB:
         if h in self.keys and not any(k["sha256"] == h for k in self.api_keys):  # a key seeded straight into the store
             return {"id": "seeded", "workspace": self.keys[h], "scopes": ["ingest"]}
         return None
+
+    async def create_webhook(self, ws, doc):
+        hook_id = f"w{len(self.webhooks) + 1}"
+        self.webhooks[hook_id] = {**doc, "id": hook_id, "workspace": ws, "created_at": f"2026-01-01T00:00:{len(self.webhooks):02d}"}
+        return hook_id
+
+    async def list_webhooks(self, ws):
+        return [copy.deepcopy(h) for h in reversed(list(self.webhooks.values())) if h["workspace"] == ws]
+
+    async def revoke_webhook(self, ws, webhook_id):
+        h = self.webhooks.get(webhook_id)
+        if not h or h["workspace"] != ws or h.get("revoked_at"):
+            return False
+        h["revoked_at"] = "now"
+        return True
+
+    async def claim_alert(self, ws, run_id):
+        r = self.runs.get(run_id)
+        if not r or r["workspace"] != ws or r.get("alerted_at"):
+            return False
+        r["alerted_at"] = "now"
+        return True
 
     async def upsert_workspace(self, ws, name):
         return None
@@ -221,7 +244,7 @@ class FakeDB:
 
 DB_FUNCTIONS = ("upsert_workspace", "create_api_key", "list_api_keys", "revoke_api_key", "list_experiments", "key_for_hash", "create_run", "run_exists", "add_steps", "finish_run",
                 "get_run_with_steps", "list_runs", "create_fork_edge", "list_forks",
-                "create_experiment", "update_experiment", "update_experiment_if_rev", "get_experiment", "create_tested_edge",
+                "create_experiment", "update_experiment", "update_experiment_if_rev", "create_webhook", "list_webhooks", "revoke_webhook", "claim_alert", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",
                 "get_featured_run_id", "list_featured_experiments", "list_experiments_for_run", "list_experiments_for_runs", "agents_for_runs", "list_memory_scopes", "create_audit", "list_audit",
                 "count_experiments_since", "delete_run_cascade", "update_rca_report",

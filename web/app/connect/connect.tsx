@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { SampleRunButton } from "@/components/sample-run-button";
+import { Alerts } from "./alerts";
 import { ApiError, useApi } from "@/lib/api";
 import { describeScopes, KEY_KINDS, usage } from "@/lib/keys";
 import { useApiData } from "@/lib/use-api-data";
@@ -178,6 +179,7 @@ export function Connect() {
       </section>
 
       <Import />
+      <Alerts />
     </div>
   );
 }
