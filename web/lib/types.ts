@@ -46,6 +46,8 @@ export type OracleDetail = {
   open_tickets_ok?: boolean;
   pipeline_ok?: boolean;
   critic_loop_ok?: boolean;
+  // A check the run's owner wrote in code (any workflow). passed is null when the check itself failed to run.
+  verdict?: { kind: "code"; name: string; passed: boolean | null; reason: string };
 };
 
 export type Run = RunSummary & { oracle_detail?: OracleDetail; steps: Step[]; forkable?: boolean }; // forkable: false = view only

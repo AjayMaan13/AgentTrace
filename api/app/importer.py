@@ -66,10 +66,13 @@ def to_steps(run: ImportRun) -> list[Step]:
     return out
 
 
-async def import_run(workspace: str, run: ImportRun) -> dict[str, Any]:
-    """Store the run as recorded. Text is redacted and clamped exactly as ingest does it."""
-    run_id = uuid.uuid4().hex
-    await db.create_run(workspace, run_id, run.workflow, run.started_at or datetime.now(UTC).isoformat())
+async def import_run(workspace: str, run: ImportRun, run_id: str | None = None) -> dict[str, Any]:
+    """Store the run as recorded. Text is redacted and clamped exactly as ingest does it. With a `run_id`
+    (an OpenTelemetry trace id) a second delivery of the same run is a no-op, so exporters may retry."""
+    run_id = run_id or uuid.uuid4().hex
+    created = await db.create_run(workspace, run_id, run.workflow, run.started_at or datetime.now(UTC).isoformat())
+    if not created:
+        return {"id": run_id, "steps": 0, "existing": True}
     steps = [prepare_step(s, run_id) for s in to_steps(run)]
     await db.add_steps(workspace, run_id, steps)
     await db.finish_run(workspace, run_id, "ok", run.outcome, run.oracle_detail)

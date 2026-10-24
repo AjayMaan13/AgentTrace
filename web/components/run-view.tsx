@@ -14,6 +14,7 @@ import { RcaView } from "@/components/rca-view";
 import { TestFixPanel } from "@/components/test-fix-panel";
 import { useApi } from "@/lib/api";
 import { formatTime, formatTokens } from "@/lib/format";
+import { headline } from "@/lib/checks";
 import { buildGraph } from "@/lib/graph";
 import { marksFromReport } from "@/lib/story";
 import type { Experiment, RcaReport, Run, State } from "@/lib/types";
@@ -126,9 +127,14 @@ function RunBody({
       <header className="grid items-end gap-6 lg:grid-cols-[1fr_auto]">
         <div className="flex flex-col gap-3">
           <Title className="max-w-3xl font-serif text-[1.75rem] leading-tight sm:text-[2.25rem]">
-            {!failed ? "This run gave the right answer." : got !== undefined && want !== undefined ? `The brief says ${got} open tickets, not ${want}.` : "This run gave a wrong answer."}
+            {failed && got !== undefined && want !== undefined ? `The brief says ${got} open tickets, not ${want}.` : headline(run.outcome)}
           </Title>
-          {run.oracle_detail && <Checks detail={run.oracle_detail} />}
+          <Checks detail={run.oracle_detail} />
+          {!run.outcome && mode === "app" && (
+            <p className="max-w-[60ch] text-muted">
+              Nothing has said whether this run is right. Add a check in code with the SDK (<code className="rounded bg-tile px-1.5 py-0.5 text-[0.8125rem]">submit_verdict</code>) and the run is marked right or wrong.
+            </p>
+          )}
           <p className="text-muted">
             {mode === "demo" && "Saved example. "}{run.workflow} · {formatTime(run.started_at)} · {run.steps.length} steps ·{" "}
             {formatTokens((run.tokens_in ?? 0) + (run.tokens_out ?? 0))} tokens

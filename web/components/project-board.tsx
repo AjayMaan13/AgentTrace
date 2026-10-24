@@ -194,7 +194,7 @@ function RunBar({ row: r, x, width }: { row: RunRow; x: (t: number) => number; w
         href={r.href} aria-label={`Run from ${shortTime(r.from)}. Open it.`} title={`${shortTime(r.from)} · ${wrong ? "wrong answer" : out === "pass" ? "right answer" : "no result yet"}`}
         className="absolute top-1/2 h-4 -translate-y-1/2 rounded-[4px] hover:brightness-125" style={{ left: a, width: b - a, background: r.color }}
       />
-      <Label at={b} left={a} width={width} className={wrong ? "text-bad" : "text-muted"}>{out === "pass" ? "Right answer" : wrong ? "Wrong answer" : "No result yet"}</Label>
+      <Label at={b} left={a} width={width} className={wrong ? "text-bad" : "text-muted"}>{out === "pass" ? "Right answer" : wrong ? "Wrong answer" : "No verdict yet"}</Label>
     </>
   );
 }
