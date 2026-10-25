@@ -7,7 +7,9 @@ connection; that is simple, and fast enough for the volumes here.
 
 import asyncio
 import logging
+import os
 import re
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -60,9 +62,115 @@ async def session() -> AsyncIterator[None]:
             _shared.reset(token)
 
 
+# --- connections -----------------------------------------------------------------------------
+# Opening a connection to SurrealDB Cloud takes about 0.4 s and CLOSING one takes about 1 s, while a query takes
+# 0.06 s. A request that opened and closed its own connection spent over 90% of its time on that. So inside the
+# running API a few idle connections are kept and handed to one caller at a time (never shared by two at once).
+# A connection that raised is thrown away, not reused. One idle for a while is checked with a tiny query first.
+# Scripts and tests do not switch this on, and SURREAL_POOL=0 switches it off in the API.
+_pool: list[tuple[Any, float]] | None = None  # None: off. Otherwise the idle connections and when each was last used.
+MAX_IDLE = 4
+CHECK_AFTER_S = 15.0
+_closing: set[asyncio.Task] = set()
+
+
+def enable_pool() -> None:
+    global _pool
+    if os.environ.get("SURREAL_POOL", "1") != "0" and _pool is None:
+        _pool = []
+
+
+async def close_pool() -> None:
+    global _pool
+    idle, _pool = _pool or [], None
+    await asyncio.gather(*(_quiet_close(c) for c, _ in idle), return_exceptions=True)
+    await asyncio.gather(*list(_closing), return_exceptions=True)
+
+
+async def _quiet_close(conn: Any) -> None:
+    try:
+        await conn.close()
+    except Exception as exc:
+        log.warning("closing a connection failed: %s", type(exc).__name__)
+
+
+def _drop(conn: Any) -> None:
+    """Close in the background: the caller must not wait the second a close takes."""
+    task = asyncio.ensure_future(_quiet_close(conn))
+    _closing.add(task)
+    task.add_done_callback(_closing.discard)
+
+
+async def _open_once(s: Settings) -> Any:
+    conn = AsyncSurreal(s.surreal_url)
+    await conn.connect()
+    try:
+        if s.surreal_token:
+            await conn.authenticate(s.surreal_token)
+        else:
+            await conn.signin(_signin_vars(s))
+        await conn.use(s.surreal_ns, s.surreal_db)
+    except BaseException:
+        await _quiet_close(conn)
+        raise
+    return conn
+
+
+async def _open(s: Settings) -> Any:
+    """Open one, and once more if the first try timed out or the network dropped it: the handshake to SurrealDB
+    Cloud now and then takes longer than its limit, and one slow handshake should not fail a whole request."""
+    try:
+        return await _open_once(s)
+    except (TimeoutError, OSError, ConnectionError) as exc:
+        log.warning("opening a database connection failed (%s); trying once more", type(exc).__name__)
+        return await _open_once(s)
+
+
+async def _take(s: Settings) -> Any:
+    while _pool:
+        conn, last_used = _pool.pop()
+        if time.monotonic() - last_used > CHECK_AFTER_S:
+            try:
+                await asyncio.wait_for(conn.query("RETURN 1;"), timeout=3)
+            except BaseException as exc:  # gone stale while idle
+                _drop(conn)
+                if not isinstance(exc, Exception):
+                    raise
+                continue
+        return conn
+    return await _open(s)
+
+
+def _give(conn: Any) -> None:
+    if _pool is not None and len(_pool) < MAX_IDLE:
+        _pool.append((conn, time.monotonic()))
+    else:
+        _drop(conn)
+
+
+_shared: ContextVar[Any] = ContextVar("surreal_shared", default=None)
+
+
+@asynccontextmanager
+async def session() -> AsyncIterator[None]:
+    """Hold ONE connection for the calls made inside this block. Everything inside runs one after another in this
+    task, so one connection is safe. Never start a background task inside it: the task would inherit the connection
+    and outlive it."""
+    if _shared.get() is not None:
+        yield
+        return
+    async with connect() as c:
+        token = _shared.set(c)
+        try:
+            yield
+        finally:
+            _shared.reset(token)
+
+
 @asynccontextmanager
 async def connect(settings: Settings | None = None) -> AsyncIterator[AsyncSurreal]:
-    """Open an authenticated connection scoped to SURREAL_NS / SURREAL_DB, or the one a `session()` holds.
+    """An authenticated connection scoped to SURREAL_NS / SURREAL_DB: the one a `session()` holds, an idle one from
+    the pool, or a new one that is closed when the block ends.
 
     The SDK appends /rpc to the url itself, so SURREAL_URL is the bare host.
     """
@@ -71,6 +179,15 @@ async def connect(settings: Settings | None = None) -> AsyncIterator[AsyncSurrea
         yield shared
         return
     s = settings or get_settings()
+    if _pool is not None and settings is None:
+        conn = await _take(s)
+        try:
+            yield conn
+        except BaseException:
+            _drop(conn)  # it may be half way through something: never hand it to anyone else
+            raise
+        _give(conn)
+        return
     async with AsyncSurreal(s.surreal_url) as db:
         if s.surreal_token:
             await db.authenticate(s.surreal_token)
@@ -90,7 +207,7 @@ async def ping(timeout: float = DB_CONNECT_TIMEOUT_S) -> bool:
         return False
 
     async def _probe() -> bool:
-        async with connect(s) as db:
+        async with connect() as db:
             await db.query("RETURN 1;")
         return True
 

@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -11,10 +12,21 @@ from app.security.limits import MAX_BODY_BYTES
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Keep database connections between requests while the API runs (see db.enable_pool)."""
+    db.enable_pool()
+    try:
+        yield
+    finally:
+        await db.close_pool()
+
+
 # In production the interactive API docs are off: nothing needs them there.
 _prod = settings.env == "prod"
 app = FastAPI(
-    title="AgentTrace API", version="0.0.1",
+    lifespan=lifespan, title="AgentTrace API", version="0.0.1",
     docs_url=None if _prod else "/docs", redoc_url=None if _prod else "/redoc",
     openapi_url=None if _prod else "/openapi.json",
 )

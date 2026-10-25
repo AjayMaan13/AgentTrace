@@ -38,3 +38,9 @@ The schema is applied by that script (`db.apply_schema()`, idempotent). **Run it
 - Rate limits are in memory, per process. Put a reverse proxy with its own limits and a request size cap in front.
 - No retention sweep: deleting data is by an admin, by hand.
 - See `SECURITY.md` for the known gaps.
+
+## Speed, and the free-plan sleep
+
+- **Database connections are reused.** Measured against SurrealDB Cloud: opening a connection takes about 0.4 s, *closing* one about 1 s, and a query about 0.06 s, so a request that opened and closed its own connection spent over 90% of its time on that. The running API now keeps up to 4 idle connections (never shared by two callers at once; one that raised is thrown away; one idle for 15 s is checked first; an open that times out is tried once more). Health check: 1.55 s to 0.05 s. First load of the public demo data: 13 s to 0.4 s. A worker job: 21 s to 1.5 s. Set `SURREAL_POOL=0` to turn it off.
+- **The public `/demo` page** tries the API for 4 seconds and otherwise shows a saved copy of the same stored results (`web/lib/demo-snapshot.ts`). Regenerate it after the demo data changes: `node web/scripts/snapshot-demo.mjs https://<your-api>`.
+- **What code cannot fix:** a Render free-plan service goes to sleep after about 15 minutes without traffic and takes about 50 seconds to wake. Two services in a row (the web app, then the API it calls) is the two-minute wait. Either upgrade both to a paid plan that does not sleep (a billing decision in the Render dashboard, or `plan:` in `render.yaml`), or send a request to each every ten minutes from an uptime service while judging is open. Free services share a monthly allowance of instance hours, so keeping both awake for weeks will run out; for a few days it is fine. Before presenting or recording, open both once and wait for an answer.
