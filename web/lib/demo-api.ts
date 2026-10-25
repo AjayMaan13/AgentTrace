@@ -14,7 +14,7 @@ export function makeDemoApi(now: () => number = Date.now) {
       { id: "k3", prefix: "at_live_Ag7q", scopes: ["read", "spend"], created_at: iso(900), last_seen_at: null, revoked_at: null },
     ] as Row[],
     hooks: [
-      { id: "w1", kind: "slack", host: "hooks.slack.com", ends: "xK2f", include_suspect: true, created_at: iso(800), revoked_at: null },
+      { id: "w1", kind: "slack", host: "hooks.slack.com", ends: "xK2f", include_suspect: true, on_forks: true, created_at: iso(800), revoked_at: null },
     ] as Row[],
     next: 10,
   };
@@ -36,7 +36,7 @@ export function makeDemoApi(now: () => number = Date.now) {
     if (method === "GET" && p === "/v1/webhooks") return { status: 200, json: state.hooks };
     if (method === "POST" && p === "/v1/webhooks") {
       const kind = body?.kind as string;
-      state.hooks = [{ id: `w${state.next++}`, kind, host: kind === "slack" ? "hooks.slack.com" : "alerts.example.com", ends: "Q9zT", include_suspect: !!body?.include_suspect, created_at: iso(0), revoked_at: null }, ...state.hooks];
+      state.hooks = [{ id: `w${state.next++}`, kind, host: kind === "slack" ? "hooks.slack.com" : "alerts.example.com", ends: "Q9zT", include_suspect: !!body?.include_suspect, on_forks: body?.on_forks !== false, created_at: iso(0), revoked_at: null }, ...state.hooks];
       return { status: 201, json: kind === "generic" ? { secret: "this-secret-is-an-example" } : {} };
     }
     if (method === "DELETE" && p.startsWith("/v1/webhooks/")) {

@@ -23,7 +23,7 @@ from typing import Any
 from agenttrace_sdk import redact
 from fastapi import HTTPException
 
-from app import db
+from app import alerts, db
 from app.config import get_settings
 from app.experiments.runner import _remember, _stats
 from app.models import WorkerResult
@@ -213,6 +213,8 @@ async def _report(workspace: str, body: WorkerResult) -> dict[str, Any]:
         if closed:
             patch |= {"stats": doc["stats"], "finished_at": doc["finished_at"]}
         if await db.update_experiment_if_rev(workspace, body.experiment, rev, patch):
+            if closed:
+                await alerts.notify_experiment(workspace, body.experiment)
             if closed and doc["status"] == "done":
                 await _remember(workspace, body.experiment, copy.deepcopy(doc))
             return {"recorded": True, "run": run_id}

@@ -21,6 +21,7 @@ class WebhookCreate(BaseModel):
     url: str = Field(min_length=12, max_length=500)
     kind: Literal["slack", "generic"] = "slack"
     include_suspect: bool = False  # costs tokens for each failed run of a registered workflow
+    on_forks: bool = True  # also tell me when a fork (an experiment) finishes, with its result
 
 
 def _admin(principal: Principal) -> None:
@@ -31,7 +32,7 @@ def _admin(principal: Principal) -> None:
 def _shown(h: dict[str, Any]) -> dict[str, Any]:
     url = h["url"]
     return {"id": h["id"], "kind": h["kind"], "host": alerts.urlsplit(url).hostname, "ends": url[-4:],
-            "include_suspect": bool(h.get("include_suspect")), "created_at": h.get("created_at"), "revoked_at": h.get("revoked_at")}
+            "include_suspect": bool(h.get("include_suspect")), "on_forks": h.get("on_forks", True), "created_at": h.get("created_at"), "revoked_at": h.get("revoked_at")}
 
 
 @router.post("/webhooks", status_code=201)
@@ -45,7 +46,7 @@ async def add_webhook(body: WebhookCreate, principal: Principal = Depends(get_pr
     existing = [h for h in await db.list_webhooks(principal.org_id) if not h.get("revoked_at")]
     if len(existing) >= MAX_WEBHOOKS:
         raise HTTPException(status_code=409, detail=f"At most {MAX_WEBHOOKS} webhooks. Remove one first.")
-    doc: dict[str, Any] = {"url": body.url, "kind": body.kind, "include_suspect": body.include_suspect, "created_by": principal.user_id}
+    doc: dict[str, Any] = {"url": body.url, "kind": body.kind, "include_suspect": body.include_suspect, "on_forks": body.on_forks, "created_by": principal.user_id}
     secret = None
     if body.kind == "generic":  # signs each post, so the receiver can tell it came from us. Shown once.
         secret = secrets.token_urlsafe(24)

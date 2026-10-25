@@ -125,10 +125,11 @@ For an assistant such as Claude Code or Claude Desktop, run `agenttrace-mcp` (or
 
 On the Connect page an admin adds an address. When a run comes out wrong (or ends in an error), each address gets one message: the workflow, the reason your check gave, and a link to the run.
 
+- **Fork results too.** Unless you switch it off, each webhook also gets one message when a fork finishes: what changed, how many runs came out right with and without the change, and the p-value, labelled directional. One message per fork, not per run. Forks made by a worker or by our server both do it.
 - **Slack:** paste a Slack incoming-webhook address (it must be `https://hooks.slack.com/services/...`). The message is escaped, so a run cannot ping a channel or put a link of its own in it.
 - **Any address:** we post JSON (`event: "run.failed"`, the run, your check's name and reason) and sign the body with a secret shown once, in `X-AgentTrace-Signature: sha256=<hmac of the body>`.
 - **The likely cause is opt-in.** It costs tokens and nobody approves it, so a webhook only gets it if you tick the box. It is worked out under the same limits as a person and charged to the webhook, and only for runs of workflows registered on our server. For your own workflows the message carries your check's reason, and says why there is no suspect.
-- A run alerts once, however many times its finish is sent. At most 10 alerts a minute per workspace; the rest are dropped and logged. A failed delivery is recorded in the audit log and never stops a run.
+- A run alerts once, however many times its finish is sent. Runs added with the "add the saved example" button, and the fork attempts a fork makes, do not alert on their own. At most 10 alerts a minute per workspace; the rest are dropped and logged. A failed delivery is recorded in the audit log and never stops a run.
 - Addresses are checked when saved and again when used: https, the standard port, no user name, and the host must resolve only to public addresses (never a private network or the cloud metadata address). Redirects are not followed. Up to 5 webhooks.
 - `Send a test` posts a sample so you can see it arrive.
 

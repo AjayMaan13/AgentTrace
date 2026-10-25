@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from agenttrace_sdk import redact
 
-from app import db
+from app import alerts, db
 from app.config import get_settings
 from app.experiments.stats import fisher_exact_two_sided, wilson
 from app.rca.memory import is_verified, remember_experiment
@@ -153,6 +153,7 @@ async def _run(
         doc["status"] = "capped" if skipped else "done"
         doc["stats"] = _stats(doc)
         await persist(stats=doc["stats"], finished_at=_now())
+        await alerts.notify_experiment(workspace, experiment_id)
         if doc["status"] == "done":
             await _remember(workspace, experiment_id, doc)
     except Exception as exc:

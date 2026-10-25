@@ -225,3 +225,67 @@ async def notify_failure(workspace: str, run_id: str) -> None:
             await audit.record(workspace, f"webhook:{hook['id']}", "alert.sent" if ok else "alert.failed", run_id, {"status": status})
     except Exception as exc:
         log.warning("alert for %s failed: %s", run_id, type(exc).__name__)
+
+
+def fork_words(control: dict[str, Any], treatment: dict[str, Any], p: float | None) -> str:
+    """What a finished fork says, in plain words, and never more than the numbers can support."""
+    if not treatment["total"] or not control["total"]:
+        return "It finished without enough runs to say anything."
+    c, t = control["pass"] / control["total"], treatment["pass"] / treatment["total"]
+    if t > c:
+        if p is not None and p < 0.05:
+            return "The change fixed it." if t >= 0.8 else "The change helped, but not every run came out right."
+        return "It looks like the change helped, but there are too few runs to be sure."
+    if t == c:
+        return "The change made no difference."
+    return "The change made things worse."
+
+
+def fork_event(workflow: str, agent: str, exp: dict[str, Any]) -> dict[str, Any]:
+    origin = get_settings().web_origins[0]
+    stats = exp.get("stats") or {}
+    return {
+        "event": "experiment.finished",
+        "experiment": {"id": exp["id"], "status": exp["status"], "workflow": workflow, "changed_agent": agent, "n": exp["n"],
+                       "without_the_change": exp["control"], "with_the_change": exp["treatment"], "fisher_p": stats.get("fisher_p"),
+                       "label": stats.get("label", "directional"), "url": f"{origin}/runs/{exp['parent_run']}?fork={exp['id']}",
+                       "summary": fork_words(exp["control"], exp["treatment"], stats.get("fisher_p"))},
+    }
+
+
+def slack_fork_message(event: dict[str, Any]) -> dict[str, Any]:
+    e = event["experiment"]
+    c, t = e["without_the_change"], e["with_the_change"]
+    lines = [f"*Fork finished* on *{_escape(e['workflow'])}*: changing the *{_escape(e['changed_agent'])}*."]
+    lines.append(f"Without the change {c['pass']} of {c['total']} right, with it {t['pass']} of {t['total']}. {_escape(e['summary'])}")
+    p = e["fisher_p"]
+    lines.append(f"Directional only ({'p < 0.001' if p is not None and p < 0.001 else f'p = {p:.3f}' if p is not None else 'no p-value yet'}): live steps are sampled.")
+    if e["status"] == "capped":
+        lines.append("It stopped early at the token ceiling.")
+    lines.append(f"<{e['url']}|Open it>")
+    return {"text": "\n".join(lines)}
+
+
+async def notify_experiment(workspace: str, experiment_id: str) -> None:
+    """Tell every webhook that wants to know that a fork finished. Never raises."""
+    try:
+        hooks = [h for h in await db.list_webhooks(workspace) if not h.get("revoked_at") and h.get("on_forks", True)]
+        if not hooks:
+            return
+        exp = await db.get_experiment(workspace, experiment_id)
+        if exp is None or exp["status"] not in ("done", "capped"):
+            return
+        try:
+            alert_limiter.check(workspace)
+        except HTTPException:
+            log.warning("fork alert for %s dropped: too many alerts this minute", experiment_id)
+            return
+        parent = await db.get_run_with_steps(workspace, exp["parent_run"])
+        agents = await db.agents_for_runs([exp["parent_run"]])
+        event = fork_event(parent["workflow"] if parent else "a workflow", agents.get(exp["parent_run"], {}).get(exp["fork_idx"], "an agent"), {**exp, "id": experiment_id})
+        for hook in hooks:
+            status = await deliver(hook, slack_fork_message(event) if hook["kind"] == "slack" else event)
+            ok = status is not None and 200 <= status < 300
+            await audit.record(workspace, f"webhook:{hook['id']}", "alert.sent" if ok else "alert.failed", experiment_id, {"status": status, "about": "fork"})
+    except Exception as exc:
+        log.warning("fork alert for %s failed: %s", experiment_id, type(exc).__name__)

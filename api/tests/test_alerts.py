@@ -13,7 +13,8 @@ from app.main import app
 from app.runtime import get_runtime
 from test_agent_api import judged_run, keys_for
 from test_rca import FakeModel, cand, failing_run, tool_use  # noqa: F401 (failing_run is a fixture)
-from test_worker import ApiSink, FLOW
+from test_worker import ApiSink, FLOW, drain, make_worker, record, start
+from test_worker import world as worker_world  # noqa: F401 (a fixture, under another name)
 
 from agenttrace_sdk import RunRecorder
 
@@ -168,7 +169,7 @@ def test_an_address_that_turns_private_after_it_was_saved_is_not_posted_to(world
 def test_a_listed_webhook_shows_its_host_and_end_never_the_address_and_members_cannot_manage_them(world, login):
     made = add(world).json()
     listed = world.get("/v1/webhooks").json()
-    assert listed == [{"id": made["id"], "kind": "slack", "host": "hooks.slack.com", "ends": "XXXX", "include_suspect": False,
+    assert listed == [{"id": made["id"], "kind": "slack", "host": "hooks.slack.com", "ends": "XXXX", "include_suspect": False, "on_forks": True,
                        "created_at": listed[0]["created_at"], "revoked_at": None}]
     assert SLACK not in json.dumps(listed) and SLACK not in json.dumps(made)
     login("ws-a", role="member")
@@ -233,3 +234,56 @@ def test_a_name_that_now_resolves_inside_the_network_is_refused_before_any_conne
     monkeypatch.setattr(alerts.socket, "create_connection", lambda *a, **k: pytest.fail("connected to a private address"))
     with pytest.raises(ValueError, match="private network"):
         alerts._post_sync("https://alerts.example.com/hook", b"{}", {})
+
+
+# --- a finished fork ----------------------------------------------------------------------------
+
+def finished_fork(store, run_id, status="done", c=(0, 5), t=(5, 5), p=0.0079):
+    store.experiments["exp-1"] = {
+        "id": "exp-1", "workspace": "ws-a", "status": status, "parent_run": run_id, "fork_idx": 1, "n": 5, "mode": "server",
+        "control": {"pass": c[0], "total": c[1]}, "treatment": {"pass": t[0], "total": t[1]}, "created_at": "2026-10-24T10:00:00Z",
+        "stats": {"fisher_p": p, "label": "directional evidence, N=5"}, "tiles": [],
+    }
+    return "exp-1"
+
+
+def test_a_finished_fork_tells_slack_what_changed_and_what_came_out(world, store, net, failing_run):
+    add(world)
+    asyncio.run(alerts.notify_experiment("ws-a", finished_fork(store, failing_run)))
+    [post] = net
+    text = post["body"]["text"]
+    assert text.startswith("*Fork finished* on *renewal_brief*: changing the *planner*.")
+    assert "Without the change 0 of 5 right, with it 5 of 5. The change fixed it." in text
+    assert "Directional only (p = 0.008)" in text and "<http://localhost:3000/runs/" in text and f"?fork=exp-1|Open it>" in text
+    assert [(a["action"], a["detail"]["about"]) for a in store.audit if a["action"].startswith("alert")] == [("alert.sent", "fork")]
+
+
+def test_the_words_never_claim_more_than_the_numbers_support():
+    words = alerts.fork_words
+    assert words({"pass": 0, "total": 5}, {"pass": 5, "total": 5}, 0.008) == "The change fixed it."
+    assert "too few runs" in words({"pass": 0, "total": 3}, {"pass": 3, "total": 3}, 0.1)  # 3 of 3 against 0 of 3 is only a hint
+    assert words({"pass": 0, "total": 5}, {"pass": 0, "total": 5}, 1.0) == "The change made no difference."
+    assert words({"pass": 4, "total": 5}, {"pass": 1, "total": 5}, 0.1) == "The change made things worse."
+    assert "not every run" in words({"pass": 0, "total": 8}, {"pass": 5, "total": 8}, 0.01)
+
+
+def test_a_webhook_can_leave_fork_results_out_and_an_unfinished_fork_tells_nobody(world, store, net, failing_run):
+    add(world)
+    world.post("/v1/webhooks", json={"url": PUBLIC, "kind": "generic", "on_forks": False})
+    for status in ("running", "queued", "error"):
+        asyncio.run(alerts.notify_experiment("ws-a", finished_fork(store, failing_run, status)))
+    assert net == []
+    asyncio.run(alerts.notify_experiment("ws-a", finished_fork(store, failing_run)))
+    assert [p["url"] for p in net] == [SLACK]  # the one that asked; the generic one opted out
+
+
+def test_a_fork_run_through_a_worker_posts_one_message_when_it_finishes_not_one_per_job(worker_world, net):
+    client, keys = worker_world
+    assert add(client).status_code == 201
+    run_id = record(client, keys)
+    exp_id = start(client, run_id, n=2).json()["id"]
+    assert [("gave a wrong answer" in p["body"]["text"]) for p in net] == [True]  # the failed run alerted when it was recorded; the queued fork says nothing
+    assert drain(make_worker(client, keys)) == 4
+    texts = [p["body"]["text"] for p in net[1:]]
+    assert len(texts) == 1 and "Fork finished" in texts[0] and "Without the change 0 of 2 right, with it 2 of 2" in texts[0]  # one message for four jobs
+    assert f"fork={exp_id}" in texts[0]
