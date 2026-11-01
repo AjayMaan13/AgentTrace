@@ -120,7 +120,7 @@ Redaction at the source and again on ingest (`[REDACTED:<type>:<hash8>]`), 32 KB
 
 - **N is small.** Results are directional. The UI says so and shows Wilson intervals.
 - **Only registered workflows replay.** There is no endpoint that runs arbitrary code, and the recorder currently targets Python and the Anthropic SDK.
-- **Edit-output mode only.** You can replace a step's output; editing a prompt and re-running that step live is not built.
+- **Two kinds of edit.** You can replace a step's output, or (for workflows registered on this server) change an agent's instructions: that agent then runs live again in both arms, with your instructions and with the recorded ones. Instructions of agents that run in your own code (forked through a worker) cannot be changed from here. Instruction edits are covered by offline tests with a fake model; they have not been run against the real model yet.
 - **Experiments live in the API process** and are lost on a restart; the UI polls (no streaming).
 - **Rate limits are per process**, and there is no retention sweep or key-rotation endpoint (see SECURITY.md).
 - **Auto-verify tests only candidates with a concrete edit.** On the demo run that was one of three.
