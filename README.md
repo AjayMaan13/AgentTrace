@@ -13,6 +13,7 @@ Traces show what happened. AgentTrace tests what caused it: record a run, fork i
 | API | <https://agenttrace-api-apaa.onrender.com/health> |
 | Devpost | <https://devpost.com/software/agenttrace-qb8jvo> |
 | Pitch deck (PDF) | [docs/AgentTrace-Pitch.pdf](docs/AgentTrace-Pitch.pdf) |
+| Example client (separate repo) | <https://github.com/AjayMaan13/agenttrace-harness-demo>: three Claude agents run as a LangGraph graph, recorded into AgentTrace and forkable through a worker |
 
 - Built for Build North (Oct 2026), solo.
 - The free Render services sleep after 15 minutes without traffic, so the first request can take about a minute. The demo page shows the saved results while the API wakes up.
@@ -49,13 +50,18 @@ Why a control arm: one replay with a fix that "works" could be luck, because liv
 ```mermaid
 flowchart LR
   subgraph Customer process
-    W[Workflow + SDK<br/>trace_run, @node, @tool<br/>redacts before send]
+    G["Your agents<br/>example: agenttrace-harness-demo,<br/>LangGraph + Claude Agent SDK"]
+    W["AgentTrace SDK<br/>RunRecorder, trace_run, @node, @tool<br/>redacts before send"]
+    WK["SDK worker<br/>re-runs the agents live for a fork"]
+    G --> W
+    G --> WK
   end
   subgraph Render
     API[FastAPI api<br/>ingest, replay, experiments, RCA]
     WEB[Next.js web<br/>Clerk sign-in]
   end
   W -- ingest key --> API
+  WK -- worker key, asks for fork jobs --> API
   WEB -- Clerk JWT --> API
   API --> DB[(SurrealDB Cloud<br/>runs, steps, forks, experiments)]
   API --> MEM[(SurrealDB Agent Memory<br/>verified failure patterns)]
@@ -111,7 +117,7 @@ cd web && npm run dev                                  # http://localhost:3000
 
 Useful scripts (`api/scripts/`): `seed_demo.py` (record the failing run, run the decoy and hero experiments, store the root-cause report), `era_benchmark.py`, `verify_demo.py`, `remember_experiment.py`, `create_workspace_key.py` (mint an ingest key, shown once). Live tests: `RUN_LIVE=1 .venv/bin/pytest`.
 
-Connecting your own agents: sign in, create an organization, then open **Connect your agents**. There you can add the saved example to your workspace (a real run you can fork at once, no code, no tokens), make a key and copy the snippet, or import past logs (those are view only). Agents you did not write can be recorded too, from OpenTelemetry GenAI traces or a LangGraph stream, and given a right or wrong verdict by a check you write (forkable through a worker you run next to your code); an assistant or the command line can look at failed runs through MCP: see [docs/integrations.md](docs/integrations.md) (which also covers failure alerts to Slack and a CI gate) and [docs/self-host.md](docs/self-host.md) to run it yourself. See [sdk/agenttrace_sdk](sdk/agenttrace_sdk) and [record_demo.py](api/scripts/record_demo.py) for a complete example.
+Connecting your own agents: sign in, create an organization, then open **Connect your agents**. There you can add the saved example to your workspace (a real run you can fork at once, no code, no tokens), make a key and copy the snippet, or import past logs (those are view only). Agents you did not write can be recorded too, from OpenTelemetry GenAI traces or a LangGraph stream, and given a right or wrong verdict by a check you write (forkable through a worker you run next to your code); an assistant or the command line can look at failed runs through MCP: see [docs/integrations.md](docs/integrations.md) (which also covers failure alerts to Slack and a CI gate) and [docs/self-host.md](docs/self-host.md) to run it yourself. A complete outside example, with its own repo, is [agenttrace-harness-demo](https://github.com/AjayMaan13/agenttrace-harness-demo): a LangGraph app of three Claude agents that records into AgentTrace and runs forks through a worker. See [sdk/agenttrace_sdk](sdk/agenttrace_sdk) and [record_demo.py](api/scripts/record_demo.py) for an example inside this repo.
 
 Recording your own workflow in code:
 
@@ -146,7 +152,7 @@ AgentTrace is meant to complement these. What it adds: **control-arm experiments
 
 ## Built with
 
-Python 3.11, FastAPI, Pydantic v2, the Anthropic SDK, SurrealDB Cloud and Agent Memory (`surrealdb-memory`), Next.js 16, Clerk, Tailwind, Render, and Era by Eon. The web app started from `create-next-app` and the Clerk quickstart. No LangChain or LangGraph.
+Python 3.11, FastAPI, Pydantic v2, the Anthropic SDK, SurrealDB Cloud and Agent Memory (`surrealdb-memory`), Next.js 16, Clerk, Tailwind, Render, and Era by Eon. The web app started from `create-next-app` and the Clerk quickstart. No LangChain or LangGraph in AgentTrace itself; the separate example client above uses LangGraph.
 
 ## License
 
