@@ -4,9 +4,18 @@
 
 Traces show what happened. AgentTrace tests what caused it: record a run, fork it at any step, edit that step, and re-run the rest live N times in a **control arm** (no edit) and a **treatment arm** (your edit). The result is a success rate per arm, checked by code against ground truth, with a Fisher exact p-value labelled *directional*.
 
-- Live demo (no sign-in): <https://agenttrace-web.onrender.com/demo>, with an Examples dropdown: the saved failing run, all runs by time, keys and alerts, forking your own agents through a worker, and the terminal and CI
-- API: <https://agenttrace-api-apaa.onrender.com/health>
+[![AgentTrace pitch: rewind to any sub-agent, fix it, and be confident that the fix works](docs/assets/pitch-cover.png)](docs/AgentTrace-Pitch.pdf)
+
+| | Link |
+| --- | --- |
+| Live demo (no sign-in) | <https://agenttrace-web.onrender.com/demo>, with an Examples dropdown: the saved failing run, all runs by time, keys and alerts, forking your own agents through a worker, and the terminal and CI |
+| Web app | <https://agenttrace-web.onrender.com/> |
+| API | <https://agenttrace-api-apaa.onrender.com/health> |
+| Devpost | <https://devpost.com/software/agenttrace-qb8jvo> |
+| Pitch deck (PDF) | [docs/AgentTrace-Pitch.pdf](docs/AgentTrace-Pitch.pdf) |
+
 - Built for Build North (Oct 2026), solo.
+- The free Render services sleep after 15 minutes without traffic, so the first request can take about a minute. The demo page shows the saved results while the API wakes up.
 
 ## What it shows
 
