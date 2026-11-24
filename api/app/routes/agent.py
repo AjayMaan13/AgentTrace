@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app import db
 from app.auth import KeyPrincipal, key_with_scope
+from app.assistant.search import search_passages
 from app.experiments.runner import view as experiment_view
 from app.models import ExperimentCreate
 from app.routes.experiments import launch, workers_online
@@ -110,3 +111,13 @@ async def get_experiment(experiment_id: str, key: KeyPrincipal = Depends(key_wit
     v = experiment_view(doc)
     return {**{k: v[k] for k in ("id", "status", "mode", "parent_run", "fork_node_run_idx", "n", "control", "treatment", "stats", "error")},
             "workers_online": await workers_online(key.workspace, doc)}
+
+
+@router.get("/docs/search")
+async def search_docs(
+    q: str = Query(min_length=1, max_length=300), key: KeyPrincipal = Depends(key_with_scope("read"))
+) -> dict[str, Any]:
+    """Passages of the AgentTrace documentation that answer a question, best first (BM25 over the public docs; no workspace
+    data is searched). It still needs a read key, so the call is limited and attributable like every other one here."""
+    chunks = await search_passages(q.strip(), 4)
+    return {"results": [{"cite": f"doc:{c.id}", "source": c.source, "heading": c.heading, "text": c.text[:1200]} for c in chunks]}

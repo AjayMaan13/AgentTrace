@@ -107,3 +107,13 @@ def test_the_cli_says_what_is_missing_when_there_is_no_key(monkeypatch, capsys):
     monkeypatch.delenv("AGENTTRACE_URL", raising=False)
     assert cli.main(["failed"]) == 1
     assert "AGENTTRACE_KEY" in capsys.readouterr().err
+
+
+def test_an_agent_can_search_the_docs_with_a_read_key_and_a_made_up_key_is_refused(world):
+    client, keys = world
+    [(err, found)] = ask(Shim(client, keys["read"]), ("search_docs", {"query": "how do I get slack alerts when a run fails"}))
+    assert err is False and found["results"][0]["cite"] == "doc:docs/integrations.md#6-failure-alerts-slack-or-any-address"
+    assert all(set(r) == {"cite", "source", "heading", "text"} for r in found["results"]) and len(found["results"]) <= 4
+    [(err, refused)] = ask(Shim(client, "at_live_not-a-key"), ("search_docs", {"query": "slack"}))
+    assert err is True and "refused" in refused
+    assert client.get("/v1/agent/docs/search?q=").status_code in (401, 422)

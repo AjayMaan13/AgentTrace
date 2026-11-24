@@ -1,32 +1,56 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState } from "react";
-import { ApiError, useApi } from "@/lib/api";
-import { GENERAL_QUESTIONS, RUN_QUESTIONS, citationHref, sourcesOf, splitAnswer, type AskResponse } from "@/lib/assistant";
+import { useEffect, useId, useRef, useState } from "react";
+import { ApiError, useApiStream } from "@/lib/api";
+import { GENERAL_QUESTIONS, RUN_QUESTIONS, citationHref, previewText, sourcesOf, splitAnswer, type AskResponse } from "@/lib/assistant";
 
 /** Ask AgentTrace: a question about how it works or about this run, answered from the documentation and your own runs.
  * A numbered mark in the answer points to its source: a passage of the docs, or a run or experiment you can open. */
 export function AssistantPanel({ runId }: { runId?: string }) {
-  const api = useApi();
+  const stream = useApiStream();
   const inputId = useId();
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState<{ question: string; result: AskResponse } | null>(null);
+  const [status, setStatus] = useState<string | null>(null); // what the assistant is doing right now
+  const [preview, setPreview] = useState(""); // the answer as it is written; the checked answer replaces it
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []); // leaving the page stops the stream
 
   async function ask(text: string) {
     const q = text.trim();
     if (!q || busy) return;
+    controller.current = new AbortController();
     setBusy(true);
     setError(null);
+    setStatus("Thinking");
+    setPreview("");
+    let answered = false;
     try {
-      const result = await api<AskResponse>("/v1/assistant/ask", { method: "POST", body: JSON.stringify({ question: q, run_id: runId ?? null }) });
-      setShown({ question: q, result });
+      await stream("/v1/assistant/ask/stream", { question: q, run_id: runId ?? null }, ({ event, data }) => {
+        const d = data as { message?: string; delta?: string; detail?: string };
+        if (event === "status") {
+          setStatus(d.message ?? "Working"); // the text so far was before a tool ran or before a redo: drop it
+          setPreview("");
+        } else if (event === "text") {
+          setPreview((p) => p + (d.delta ?? ""));
+        } else if (event === "result") {
+          answered = true;
+          setShown({ question: q, result: data as AskResponse });
+        } else if (event === "error") {
+          answered = true;
+          setError(d.detail ?? "The assistant failed");
+        }
+      }, controller.current.signal);
+      if (!answered) setError("The answer was cut off. Try again.");
     } catch (err) {
-      setError(err instanceof ApiError || err instanceof Error ? err.message : "Request failed");
+      if (!(err instanceof DOMException && err.name === "AbortError")) setError(err instanceof ApiError || err instanceof Error ? err.message : "Request failed");
     } finally {
       setBusy(false);
+      setStatus(null);
+      setPreview("");
     }
   }
 
@@ -67,7 +91,13 @@ export function AssistantPanel({ runId }: { runId?: string }) {
 
       <div aria-live="polite" className="flex flex-col gap-3">
         {error && <p role="alert" className="text-bad">{error}</p>}
-        {shown && (
+        {busy && (
+          <div className="rounded-lg bg-tile p-4">
+            <p className="text-muted">{status ?? "Thinking"}…</p>
+            {preview && <p className="mt-2 whitespace-pre-wrap leading-relaxed text-muted">{previewText(preview)}</p>}
+          </div>
+        )}
+        {shown && !busy && (
           <div className="flex flex-col gap-3 rounded-lg bg-tile p-4">
             <p className="text-muted">You asked: {shown.question}</p>
             {shown.result.rejected ? (

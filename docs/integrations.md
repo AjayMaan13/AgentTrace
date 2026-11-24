@@ -114,7 +114,7 @@ agenttrace result <experiment>                           # k of n each way, p-va
 agenttrace mcp                                           # the same, as MCP tools over stdio
 ```
 
-For an assistant such as Claude Code or Claude Desktop, run `agenttrace-mcp` (or `python -m agenttrace_sdk.mcp`) as an MCP server with those two environment variables. Tools: `list_failed_runs`, `get_run`, `rank_suspects`, `run_experiment`, `get_experiment`. Checked with the real `mcp` Python client (2.3.0): handshake, tool list, calls, refusals and ping.
+For an assistant such as Claude Code or Claude Desktop, run `agenttrace-mcp` (or `python -m agenttrace_sdk.mcp`) as an MCP server with those two environment variables. Tools: `list_failed_runs`, `get_run`, `rank_suspects`, `run_experiment`, `get_experiment`, and `search_docs` (looks up these docs; a `read` key is enough). Checked with the real `mcp` Python client (2.3.0): handshake, tool list, calls, refusals and ping.
 
 - The tools only look and propose. They change nothing in your system, and an experiment re-runs only through your own worker.
 - Root cause (`rank_suspects`) works only for workflows registered on our server; for your own it says so. The proposed edit comes back with the suspect; use `run_experiment` to test it.

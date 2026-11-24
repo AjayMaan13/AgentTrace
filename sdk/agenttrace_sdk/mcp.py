@@ -53,6 +53,11 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "search_docs",
+        "description": "Search the AgentTrace documentation (connecting agents, workers, alerts, the CI gate, self-hosting, security) and get the best passages. Needs only a `read` key.",
+        "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "key words of the question"}}, "required": ["query"]},
+    },
+    {
         "name": "get_experiment",
         "description": "Read an experiment: its status, k of n for each side, and the p-value (directional).",
         "inputSchema": {"type": "object", "properties": {"experiment_id": {"type": "string"}}, "required": ["experiment_id"]},
@@ -75,6 +80,8 @@ def call_tool(client: ApiClient, name: str, args: dict[str, Any]) -> Any:
         return client.request("POST", "/v1/agent/experiments", body)
     if name == "get_experiment":
         return client.request("GET", f"/v1/agent/experiments/{seg('experiment_id')}")
+    if name == "search_docs":
+        return client.request("GET", f"/v1/agent/docs/search?q={seg('query')}")
     raise ValueError(f"unknown tool {name!r}")
 
 

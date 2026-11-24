@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 from anthropic import APIError
@@ -84,8 +85,25 @@ def _result(answer: str, sources: dict[str, Any], tokens: tuple[int, int], calls
     }
 
 
-async def ask(workspace: str, question: str, run_id: str | None, client: Any) -> dict[str, Any]:
-    """Answer `question` for `workspace`. `run_id` is the run the user is looking at, if any."""
+STATUS = {
+    "search_docs": "Searching the docs",
+    "get_run": "Reading the run",
+    "list_failed_runs": "Looking at failed runs",
+    "similar_causes": "Checking past causes",
+}
+RETRYING = "Checking the sources"
+
+Event = tuple[str, Any]  # ("status", {"message"}), ("text", {"delta"}) or ("result", the answer dict)
+
+
+async def ask_events(
+    workspace: str, question: str, run_id: str | None, client: Any, *, stream: bool = False, trace: list[dict[str, Any]] | None = None
+) -> AsyncIterator[Event]:
+    """Answer `question` for `workspace` as a series of events, the last of which is ("result", ...). `run_id` is the run the
+    user is looking at, if any. With `stream`, the model's text arrives as ("text", ...) events while it is written: that
+    text is a preview, because the citation check needs the whole answer, so only the result is the answer. A "status"
+    event means the preview so far is to be dropped (a tool is about to run, or the answer is being redone).
+    `trace`, if given, receives one {"name", "args", "sources"} entry per tool call."""
     context = f"<context>The user is viewing run {run_id}.</context>\n\n" if run_id else ""
     messages: list[dict[str, Any]] = [{"role": "user", "content": context + question}]
     sources: dict[str, Any] = {}
@@ -96,11 +114,18 @@ async def ask(workspace: str, question: str, run_id: str | None, client: Any) ->
     for turn in range(ASSISTANT_MAX_TURNS):
         last = turn == ASSISTANT_MAX_TURNS - 1
         extra = {"tool_choice": {"type": "none"}} if last else {}  # the last call must be an answer
+        kwargs = dict(
+            model=ASSISTANT_MODEL, max_tokens=ASSISTANT_MAX_TOKENS, system=SYSTEM, messages=messages, tools=TOOLS,
+            output_config={"effort": ASSISTANT_EFFORT}, **extra,
+        )
         try:
-            response = await client.messages.create(
-                model=ASSISTANT_MODEL, max_tokens=ASSISTANT_MAX_TOKENS, system=SYSTEM, messages=messages, tools=TOOLS,
-                output_config={"effort": ASSISTANT_EFFORT}, **extra,
-            )
+            if stream:
+                async with client.messages.stream(**kwargs) as live:
+                    async for delta in live.text_stream:
+                        yield "text", {"delta": delta}
+                    response = await live.get_final_message()
+            else:
+                response = await client.messages.create(**kwargs)
         except APIError as exc:
             raise AssistantError("The assistant could not reach the model. Try again in a minute.") from exc
         tokens_in += response.usage.input_tokens
@@ -111,6 +136,7 @@ async def ask(workspace: str, question: str, run_id: str | None, client: Any) ->
         if uses:
             if last or over_budget:
                 break
+            yield "status", {"message": " and ".join(dict.fromkeys(STATUS.get(u.name, "Working") for u in uses))}
             outcomes = await asyncio.gather(*(execute(u.name, u.input, workspace, client, usage) for u in uses))
             calls += len(uses)
             extra_in, extra_out = usage.take()
@@ -119,6 +145,8 @@ async def ask(workspace: str, question: str, run_id: str | None, client: Any) ->
             results = []
             for use, (payload, found, is_error) in zip(uses, outcomes, strict=True):
                 sources.update(found)
+                if trace is not None:
+                    trace.append({"name": use.name, "args": use.input, "sources": sorted(found), "is_error": is_error})
                 results.append({"type": "tool_result", "tool_use_id": use.id, "content": json.dumps(payload, default=str), "is_error": is_error})
             messages += [{"role": "assistant", "content": response.content}, {"role": "user", "content": results}]
             continue
@@ -127,11 +155,24 @@ async def ask(workspace: str, question: str, run_id: str | None, client: Any) ->
         problem = _problem(text, sources)
         if problem is None:
             log.info("assistant answered: %d tool calls, %d tokens", calls, tokens_in + tokens_out)
-            return _result(text, sources, (tokens_in, tokens_out), calls, rejected=False)
+            yield "result", _result(text, sources, (tokens_in, tokens_out), calls, rejected=False)
+            return
         if corrected or last or over_budget:
             break
         corrected = True
+        yield "status", {"message": RETRYING}
         messages += [{"role": "assistant", "content": response.content}, {"role": "user", "content": problem}]
 
     log.info("assistant answer not shown: %d tool calls, %d tokens", calls, tokens_in + tokens_out)
-    return _result("", sources, (tokens_in, tokens_out), calls, rejected=True)
+    yield "result", _result("", sources, (tokens_in, tokens_out), calls, rejected=True)
+
+
+async def ask(
+    workspace: str, question: str, run_id: str | None, client: Any, *, trace: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """The answer as one result, without streaming."""
+    result: dict[str, Any] = {}
+    async for kind, data in ask_events(workspace, question, run_id, client, stream=False, trace=trace):
+        if kind == "result":
+            result = data
+    return result

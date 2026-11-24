@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { citationHref, sourcesOf, splitAnswer, type Citation } from "./assistant.ts";
+import { citationHref, previewText, sourcesOf, splitAnswer, type Citation } from "./assistant.ts";
 
 const doc: Citation = { ref: "doc:README.md#agenttrace", ok: true, kind: "doc", id: "README.md#agenttrace", label: "README.md: AgentTrace", text: "A debugger." };
 const step: Citation = { ref: `run:${"a".repeat(32)}#3`, ok: true, kind: "run", id: `${"a".repeat(32)}#3`, label: "writer, step 3", text: null };
@@ -31,4 +31,10 @@ test("a run step opens its run, an experiment opens its page, and a doc passage 
   assert.equal(citationHref(step), `/runs/${"a".repeat(32)}`);
   assert.equal(citationHref(experiment), `/experiments/${"e".repeat(32)}`);
   assert.equal(citationHref(doc), null);
+});
+
+test("a preview hides the source marks so they do not flash by as raw text", () => {
+  assert.equal(previewText(`Add a webhook [${doc.ref}] and it posts.`), "Add a webhook and it posts.");
+  assert.equal(previewText("No marks here."), "No marks here.");
+  assert.equal(previewText("Add a webhook [doc:docs/integ"), "Add a webhook "); // a mark still being written
 });

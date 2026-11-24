@@ -33,10 +33,10 @@ def test_the_handshake_agrees_a_protocol_version_it_knows_and_offers_only_tools(
 
 def test_every_tool_is_listed_with_a_schema_and_the_expensive_ones_say_so():
     tools = {t["name"]: t for t in rpc(Recorder(), "tools/list")["result"]["tools"]}
-    assert set(tools) == {"list_failed_runs", "get_run", "rank_suspects", "run_experiment", "get_experiment"} == {t["name"] for t in TOOLS}
+    assert set(tools) == {"list_failed_runs", "get_run", "rank_suspects", "run_experiment", "get_experiment", "search_docs"} == {t["name"] for t in TOOLS}
     assert all(t["inputSchema"]["type"] == "object" for t in tools.values())
     assert "Costs tokens" in tools["rank_suspects"]["description"] and "Costs tokens" in tools["run_experiment"]["description"]
-    assert "Costs tokens" not in tools["get_run"]["description"]
+    assert "Costs tokens" not in tools["get_run"]["description"] and "Costs tokens" not in tools["search_docs"]["description"]
 
 
 def test_an_unknown_method_is_a_protocol_error_and_junk_input_does_not_stop_the_server():
@@ -66,3 +66,10 @@ def test_an_experiment_is_started_with_exactly_the_arguments_given():
     c = Recorder(reply={"id": "e1"})
     rpc(c, "tools/call", {"name": "run_experiment", "arguments": {"run_id": "r1", "fork_node_run_idx": 2, "edit": {"k": "v"}, "n": 5, "workspace": "ws-b"}})
     assert c.calls == [("POST", "/v1/agent/experiments", {"run_id": "r1", "fork_node_run_idx": 2, "edit": {"k": "v"}, "n": 5})]  # no workspace argument is forwarded
+
+
+def test_a_docs_question_is_sent_as_an_encoded_query_and_never_alters_the_path():
+    c = Recorder(reply={"results": []})
+    rpc(c, "tools/call", {"name": "search_docs", "arguments": {"query": "slack alerts & ../../keys?x=1"}})
+    method, path, _ = c.calls[0]
+    assert method == "GET" and path.startswith("/v1/agent/docs/search?q=") and path.count("?") == 1 and "&" not in path and "/../" not in path

@@ -69,3 +69,9 @@ export function citationHref(c: Citation): string | null {
   if (c.kind === "experiment") return `/experiments/${c.id}`;
   return null;
 }
+
+/** The text of an answer that is still being written, without its source marks (the numbered marks appear when the answer is final). */
+export function previewText(text: string): string {
+  // A mark still being written ("[doc:docs/integ") is hidden too.
+  return text.replace(CITE, "").replace(/\[(?:doc|run|experiment):[^\]]*$/, "").replace(/[ \t]{2,}/g, " ");
+}
