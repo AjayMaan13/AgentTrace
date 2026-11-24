@@ -183,6 +183,9 @@ class FakeDB:
     async def list_audit(self, ws, limit=100):
         return sorted((a for a in self.audit if a["workspace"] == ws), key=lambda a: a["at"], reverse=True)[:limit]
 
+    async def count_audit_since(self, actor, action, since_iso):
+        return sum(1 for a in self.audit if a["actor"] == actor and a["action"] == action and a["at"] >= since_iso)
+
     async def count_experiments_since(self, created_by, since_iso):
         return sum(1 for e in self.experiments.values() if e.get("created_by") == created_by and e["created_at"] >= since_iso)
 
@@ -266,5 +269,5 @@ DB_FUNCTIONS = ("session", "touch_key", "count_workers_since", "upsert_workspace
                 "create_experiment", "update_experiment", "update_experiment_if_rev", "create_webhook", "list_webhooks", "revoke_webhook", "claim_alert", "get_experiment", "create_tested_edge",
                 "get_run_summary", "create_rca_report", "get_latest_rca_report", "clear_featured", "set_run_featured",
                 "get_featured_run_id", "list_featured_experiments", "list_experiments_for_run", "list_experiments_for_runs", "agents_for_runs", "list_memory_scopes", "create_audit", "list_audit",
-                "count_experiments_since", "delete_run_cascade", "update_rca_report",
+                "count_experiments_since", "count_audit_since", "delete_run_cascade", "update_rca_report",
                 "create_benchmark", "get_benchmark_for_experiment")

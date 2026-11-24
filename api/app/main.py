@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import db
 from app.config import get_settings
-from app.routes import agent, audit, experiments, imports, ingest, keys, otlp, public, rca, runs, sample, webhooks, worker
+from app.routes import agent, assistant, audit, experiments, imports, ingest, keys, otlp, public, rca, runs, sample, webhooks, worker
 from app.security.limits import MAX_BODY_BYTES
 
 settings = get_settings()
@@ -50,6 +50,7 @@ app.include_router(sample.router)
 app.include_router(runs.router)
 app.include_router(experiments.router)
 app.include_router(rca.router)
+app.include_router(assistant.router)
 app.include_router(public.router)
 app.include_router(audit.router)
 

@@ -693,6 +693,16 @@ async def list_audit(workspace: str, limit: int = 100) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
+async def count_audit_since(actor: str, action: str, since_iso: str) -> int:
+    """Audit records of one action by one user at or after `since_iso`: how a daily allowance is counted."""
+    async with connect() as c:
+        rows = await c.query(
+            "SELECT count() AS n FROM audit WHERE actor = $u AND action = $a AND at >= $since GROUP ALL",
+            {"u": actor, "a": action, "since": since_iso},
+        )
+    return rows[0]["n"] if rows else 0
+
+
 async def count_experiments_since(created_by: str, since_iso: str) -> int:
     """Experiments a user started at or after `since_iso` (ISO strings sort chronologically)."""
     async with connect() as c:

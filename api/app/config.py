@@ -22,6 +22,15 @@ DEMO_EFFORT = "low"
 RCA_MODEL = "claude-haiku-5-5"
 RCA_EFFORT = "medium"
 
+# "Ask AgentTrace", the assistant that answers from the docs and the workspace's runs. Haiku again (cheap); it
+# defaults to medium effort, so effort is set here.
+ASSISTANT_MODEL = "claude-haiku-5-5"
+ASSISTANT_EFFORT = "low"
+ASSISTANT_MAX_TURNS = 5  # model calls per question, tool rounds included
+ASSISTANT_MAX_TOKENS = 1500  # per model call
+ASSISTANT_TOKEN_CEILING = 40_000  # input plus output across one question
+ASSISTANT_DAILY_QUESTIONS = 100  # per user per UTC day
+
 DB_CONNECT_TIMEOUT_S = 5.0
 
 

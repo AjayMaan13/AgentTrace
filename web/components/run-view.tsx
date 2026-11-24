@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { AssistantPanel } from "@/components/assistant-panel";
 import { BenchmarkTable } from "@/components/benchmark-table";
 import { Checks } from "@/components/checks";
 import { DeleteRun } from "@/components/delete-run";
@@ -250,6 +251,7 @@ function RunBody({
         </section>
       )}
       {mode === "app" && canFork && <RcaPanel run={run} onTest={(c) => c.proposed_edit && testSuggestion(c.node_run_idx, c.proposed_edit.patch)} onReport={setSaved} />}
+      {mode === "app" && <AssistantPanel runId={run.id} />}
       {mode === "demo" && (
         <>
           {report && (

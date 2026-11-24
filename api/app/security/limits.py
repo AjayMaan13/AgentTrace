@@ -19,7 +19,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app import db
-from app.config import get_settings
+from app.config import ASSISTANT_DAILY_QUESTIONS, get_settings
 
 # One launch at a time through the cap check and the create, so two quick requests cannot both
 # slip under the daily limit. Shared by every route that starts experiments.
@@ -66,6 +66,8 @@ class SlidingWindowLimiter:
 # Calls that spend tokens: starting an experiment, running a root-cause analysis.
 experiment_limiter = SlidingWindowLimiter(max_calls=6, window_s=60)
 rca_limiter = SlidingWindowLimiter(max_calls=6, window_s=60)
+# Questions to the assistant cost far less than an experiment, so more of them a minute.
+assistant_limiter = SlidingWindowLimiter(max_calls=10, window_s=60)
 
 
 def _next_utc_midnight(now: datetime) -> datetime:
@@ -84,6 +86,19 @@ async def enforce_daily_cap(user_id: str, now: datetime | None = None, needed: i
             status_code=429, headers={"Retry-After": str(wait)},
             detail=f"Daily experiment limit reached ({cap} per user per day, resetting at 00:00 UTC). "
                    f"The saved demo results are always available without a limit.",
+        )
+
+
+async def enforce_assistant_daily_cap(user_id: str, now: datetime | None = None) -> None:
+    """429 once this user has asked the assistant ASSISTANT_DAILY_QUESTIONS questions today. Counted from the
+    audit records the route writes (a failed audit write is not counted, so this is a guard, not an accounting)."""
+    now = now or datetime.now(UTC)
+    since = datetime(now.year, now.month, now.day, tzinfo=UTC).isoformat()
+    if await db.count_audit_since(user_id, "assistant.ask", since) >= ASSISTANT_DAILY_QUESTIONS:
+        wait = int((_next_utc_midnight(now) - now).total_seconds())
+        raise HTTPException(
+            status_code=429, headers={"Retry-After": str(wait)},
+            detail=f"Daily question limit reached ({ASSISTANT_DAILY_QUESTIONS} per user per day, resetting at 00:00 UTC).",
         )
 
 
