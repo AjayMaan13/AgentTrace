@@ -70,7 +70,7 @@ flowchart LR
 ```
 
 - `sdk/` stdlib-only recorder: `trace_run`, `@node`, `@tool`, `TracedLLM`, redaction, `HttpSink`.
-- `api/` FastAPI service: ingest, read API, replay engine ([fork.py](api/app/replay/fork.py)), experiment runner and statistics ([experiments/](api/app/experiments)), root-cause agent ([rca/](api/app/rca)), security ([security/](api/app/security)), workflow and oracle ([workflows/renewal_brief](api/app/workflows/renewal_brief)).
+- `api/` FastAPI service: ingest, read API, replay engine ([fork.py](api/app/replay/fork.py)), experiment runner and statistics ([experiments/](api/app/experiments)), root-cause agent ([rca/](api/app/rca)), the Ask AgentTrace assistant ([assistant/](api/app/assistant)), security ([security/](api/app/security)), workflow and oracle ([workflows/renewal_brief](api/app/workflows/renewal_brief)).
 - `web/` Next.js (App Router) UI: a run is a workbench. The answer and a scoreboard at the top, the run drawn as one continuous line of agents with every fork opening a new branch under it, and, for the agent you select, what went in, what came out and what it passed on, beside an editor where you change it and fork. A dashed new line appears on the graph as soon as you change a value. The Runs page is a Gantt: one numbered row per run (oldest first, grouped by workflow, each run in its own colour) with time across, and every fork a marker on the row under its run. Filters: All, Wrong, Fixed, Right. Plus the public `/demo`.
 - Experiments run as asyncio tasks inside the API process, 3 at a time.
 
@@ -78,11 +78,42 @@ flowchart LR
 
 Claude Haiku 5.5 reads a compacted trace (full detail only for steps on the data-lineage path to the failing oracle field), recalls similar verified patterns from Agent Memory, and must answer with a forced `report_candidates` tool call: up to 3 candidates with confidence, hypothesis, evidence quotes and a small proposed edit. Evidence quotes are checked verbatim against the trace. **The agent proposes; experiments decide.** "Verify" runs the top two candidates that carry a concrete edit at N=3 per arm and re-ranks them by measured improvement. Trace content is untrusted input: it is delimited, the agent has no tool that acts on anything, and its output is schema-validated.
 
+## Ask AgentTrace
+
+A question box on every run page. It answers how-to questions from the documentation and questions about the workspace's own runs, and every answer lists the sources it used.
+
+- **Retrieval first.** `search_docs` ranks passages of the README, the integration guide, the self-hosting guide and the security notes with BM25 (written here, no extra dependency), then Claude Haiku 5.5 reorders the top 10. Four more tools read only the caller's own workspace: `get_run`, `list_runs`, `list_failed_runs` and `similar_causes` (verified causes from Agent Memory). None of the five changes anything.
+- **Checked sources.** An answer may cite only a source that a tool returned for that question (`[doc:...]`, `[run:...#step]`, `[experiment:...]`). A failing answer is sent back once and, if it still fails, is not shown. Run content is treated as untrusted data, and the workspace comes from the Clerk token, never from the question.
+- **Streaming.** `POST /v1/assistant/ask/stream` sends status lines and the text as it is written. That text is a preview: the checked result replaces it. The same docs search is an MCP tool, `search_docs`.
+- **Limits.** 10 questions a minute and 100 a day per user, at most 5 model calls and 40,000 tokens per question. The audit log keeps counts, never the question or the answer.
+
+**Measured on 23 Nov 2026**, docs search over 20 questions about these docs. The author wrote the questions, and one label was widened after the first run showed it was too narrow; every row below was run again afterwards.
+
+| Docs search | Right passage first | In the top 3 | MRR |
+| --- | --- | --- | --- |
+| BM25 | 12/20 | 17/20 | 0.721 |
+| BM25 + Haiku rerank (on by default) | 15/20 | 17/20 | 0.808 |
+| Agent Memory alone | 15/20 | 18/20 | 0.842 |
+| BM25 + Agent Memory, merged | 13/20 | 17/20 | 0.770 |
+| Merged + rerank | 17/20 | 20/20 | 0.925 |
+
+The rerank adds about half a second per search (mean of five calls). One Agent Memory recall took 6 to 8 seconds (five calls), so Agent Memory stays off for the interactive assistant (`ASSISTANT_DOCS_MEMORY` in [config.py](api/app/config.py)); if you turn it on, run `scripts/seed_docs_memory.py --infer none` again whenever the docs change.
+
+**Answers.** A 30-question evaluation checked by code, not by a model (20 docs questions where the answer must cite a passage that answers it, and 10 about a made-up workspace of six runs whose right answers are known) scored 28/30 on its first run. It found a bug (passages were clipped before the model saw the answer) and a missing tool (no way to list passing runs); after fixing both it scored 30/30, and 30/30 again with the rerank on. One 30-question run used 160,000 to 240,000 input tokens, about two to three cents at list prices. This is a regression check on these docs, not an accuracy claim: the questions are the author's, and a check for the right words in an answer cannot judge an explanation.
+
+```bash
+cd api
+.venv/bin/python scripts/assistant_smoke.py --stream "How do I get an alert when a run fails?"   # one real question
+.venv/bin/python scripts/assistant_eval.py                                                      # docs search, BM25 only, offline
+.venv/bin/python scripts/assistant_eval.py --live --arms bm25,bm25_rerank,memory,fused,fused_rerank
+.venv/bin/python scripts/assistant_answer_eval.py --live                                        # 30 questions on Claude
+```
+
 ## Partner platforms
 
 | Platform | How it is used | Where to look |
 | --- | --- | --- |
-| **Anthropic** | Demo agents and the root-cause agent on `claude-haiku-5-5`; forced tool call with schema validation; effort (not temperature) is the sampling control, because Haiku 5.5 rejects non-default temperature. | [rca/agent.py](api/app/rca/agent.py), [config.py](api/app/config.py) |
+| **Anthropic** | Demo agents, the root-cause agent and the Ask AgentTrace assistant on `claude-haiku-5-5`; forced tool call with schema validation; effort (not temperature) is the sampling control, because Haiku 5.5 rejects non-default temperature. | [rca/agent.py](api/app/rca/agent.py), [config.py](api/app/config.py) |
 | **SurrealDB** | Trace store with graph edges (`has_step`, `next`, `forked_from`, `tested`) in SurrealDB Cloud. **Agent Memory** `remember`s a redacted paragraph for each *verified* root cause, `recall`s it into the next analysis ("seen before" chip with the source run and experiment), and `forget`s it exactly when a run is deleted. | [schema.surql](api/schema.surql), [rca/memory.py](api/app/rca/memory.py) |
 | **Clerk** | Sign-in and organizations as workspaces, admin vs member roles. The API verifies the session JWT (RS256, JWKS, issuer, expiry, authorized party) and takes the workspace **only** from the token's organization. | [auth.py](api/app/auth.py), [proxy.ts](web/proxy.ts), [test_auth.py](api/tests/test_auth.py) (cross-org isolation) |
 | **Era by Eon** | The simulated company (Zendesk + Salesforce) is the workflow's tool environment and the source of exact ground truth for the oracle. The benchmark runs the original and patched workflow on five other Era accounts. | [tools.py](api/app/workflows/renewal_brief/tools.py), [oracle.py](api/app/workflows/renewal_brief/oracle.py), [benchmark.py](api/app/benchmark.py) |
@@ -98,15 +129,17 @@ cp .env.example .env            # names only; fill in the values you have
 
 # API (offline tests: fake database and fake model)
 cd api && python3.11 -m venv .venv && .venv/bin/pip install -e ../sdk -e '.[dev]'
-.venv/bin/pytest                # 231 passed, 13 live tests skipped
+.venv/bin/pytest                # 421 passed, 17 live tests skipped
 cd ..
 
 # SDK (stdlib only)
-api/.venv/bin/pytest sdk/              # 68 passed
+api/.venv/bin/pytest sdk/              # 91 passed
 
 # Web
-cd web && npm install && npm test && npm run build   # 38 passed
+cd web && npm install && npm test && npm run build   # 81 passed
 ```
+
+The same checks run on every push and pull request in [ci.yml](.github/workflows/ci.yml): the API and SDK tests on Python 3.11, and the web lint, tests and build on Node 22 (the build uses placeholder Clerk keys).
 
 To run it for real you need a SurrealDB Cloud instance, an Anthropic key and (for the full demo) Clerk keys, an Era company and an Agent Memory context. `api/scripts/check_env.py --phase N` lists what is still missing. Without Era, set `TOOLS_BACKEND=fixtures` to use `fixtures/company.json`.
 
@@ -136,10 +169,11 @@ Redaction at the source and again on ingest (`[REDACTED:<type>:<hash8>]`), 32 KB
 - **N is small.** Results are directional. The UI says so and shows Wilson intervals.
 - **Only registered workflows replay.** There is no endpoint that runs arbitrary code, and the recorder currently targets Python and the Anthropic SDK.
 - **Two kinds of edit.** You can replace a step's output, or (for workflows registered on this server) change an agent's instructions: that agent then runs live again in both arms, with your instructions and with the recorded ones. Instructions of agents that run in your own code (forked through a worker) cannot be changed from here. Instruction edits are covered by offline tests with a fake model; they have not been run against the real model yet.
-- **Experiments live in the API process** and are lost on a restart; the UI polls (no streaming).
+- **Experiments live in the API process** and are lost on a restart; the experiment pages poll (only the assistant streams).
 - **Rate limits are per process**, and there is no retention sweep or key-rotation endpoint (see SECURITY.md).
 - **Auto-verify tests only candidates with a concrete edit.** On the demo run that was one of three.
 - **The benchmark is one workflow** on five accounts; two patched runs crashed and their cause was not recorded.
+- **Ask AgentTrace is small and checked on small sets.** It looks at the 200 most recent runs of a workspace, streamed text is a preview until its sources are checked, and the evaluations use 20 and 30 questions written by the author.
 - The demo uses an Era tenant token that expires and is refreshed by hand.
 
 ## Related work
