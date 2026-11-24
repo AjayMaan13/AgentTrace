@@ -14,6 +14,7 @@ import pytest
 from anthropic import APIConnectionError
 from fastapi.testclient import TestClient
 
+from app import config
 from app.assistant import service, tools
 from app.assistant.retrieval import Bm25Index, MAX_CHUNK_CHARS, chunk_markdown, docs_index
 from app.auth import get_principal
@@ -30,6 +31,13 @@ SECRET_A = "payload-only-workspace-a-has"
 
 def run(coro):
     return asyncio.run(coro)
+
+
+@pytest.fixture(autouse=True)
+def no_rerank(monkeypatch):
+    """These tests script the model's replies in order, and a rerank call made by the docs search would take one of them.
+    The rerank itself is tested in test_assistant_search.py, and its default is checked there."""
+    monkeypatch.setattr(config, "ASSISTANT_RERANK", False)
 
 
 # --- retrieval ------------------------------------------------------------------------------------
@@ -155,11 +163,20 @@ def seed(store, ws, run_id, outcome="fail", workflow="renewal_brief", output="th
 
 # --- the tools ------------------------------------------------------------------------------------
 
-def test_the_assistant_has_four_tools_and_every_one_only_reads():
-    assert tools.TOOL_NAMES == {"search_docs", "get_run", "list_failed_runs", "similar_causes"}
+def test_the_assistant_has_five_tools_and_every_one_only_reads():
+    assert tools.TOOL_NAMES == {"search_docs", "get_run", "list_runs", "list_failed_runs", "similar_causes"}
     # A tool that acts would have a name like these; none exists, so text in a run cannot make the assistant act.
     payload, found, is_error = run(tools.execute("start_experiment", {"run_id": RUN_A}, WS_A))
     assert is_error and found == {} and "unknown tool" in payload["error"]
+
+
+def test_a_search_result_holds_the_whole_passage_so_an_answer_near_its_end_is_not_cut_off(store):
+    payload, found, _ = run(tools.execute("search_docs", {"query": "worker job leased queue lease minutes"}, WS_A))
+    by_id = {c.id: c for c in docs_index().chunks}
+    assert payload["results"]
+    for r in payload["results"]:
+        assert r["text"] == by_id[r["cite"].removeprefix("doc:")].text  # not shortened
+    assert any("leased for 10 minutes" in r["text"] for r in payload["results"])  # a real answer that sits late in its passage
 
 
 def test_get_run_returns_steps_with_cite_values_and_says_the_content_is_data(store):
@@ -188,6 +205,31 @@ def test_list_failed_runs_keeps_only_wrong_runs_of_this_workspace(store):
     payload, found, _ = run(tools.execute("list_failed_runs", {"limit": 5}, WS_A))
     assert {r["id"] for r in payload["runs"]} == {RUN_A, "d" * 32}
     assert set(found) == {f"run:{RUN_A}", f"run:{'d' * 32}"}
+
+
+def test_list_runs_filters_by_workflow_and_outcome_and_says_how_many_match_in_all(store):
+    seed(store, WS_A, RUN_A, "fail", workflow="renewal_brief")
+    seed(store, WS_A, "c" * 32, "pass", workflow="renewal_brief")
+    seed(store, WS_A, "d" * 32, "pass", workflow="support_triage")
+    seed(store, WS_A, "e" * 32, "fail", workflow="renewal_brief")
+    store.runs["f" * 32] = {**store.runs[RUN_A], "id": "f" * 32, "workflow": "renewal_brief", "outcome": None}  # no check has judged it
+    seed(store, WS_B, RUN_B, "pass", workflow="renewal_brief")
+
+    payload, found, is_error = run(tools.execute("list_runs", {"workflow": "renewal_brief"}, WS_A))
+    assert not is_error and payload["matching_in_total"] == 4 and {r["id"] for r in payload["runs"]} == {RUN_A, "c" * 32, "e" * 32, "f" * 32}
+    assert RUN_B not in json.dumps(payload) and set(found) == {f"run:{r['id']}" for r in payload["runs"]}  # never the other workspace's run
+    payload, _, _ = run(tools.execute("list_runs", {"workflow": "renewal_brief", "outcome": "pass"}, WS_A))
+    assert [r["id"] for r in payload["runs"]] == ["c" * 32]
+    payload, _, _ = run(tools.execute("list_runs", {"outcome": "unjudged"}, WS_A))
+    assert [r["id"] for r in payload["runs"]] == ["f" * 32]
+    payload, _, _ = run(tools.execute("list_runs", {"limit": 2}, WS_A))
+    assert len(payload["runs"]) == 2 and payload["matching_in_total"] == 5  # the count is of all matches, not just the ones listed
+
+
+@pytest.mark.parametrize("args", [{"outcome": "great"}, {"outcome": 5}])
+def test_list_runs_refuses_an_outcome_it_does_not_know(store, args):
+    payload, _, is_error = run(tools.execute("list_runs", args, WS_A))
+    assert is_error and "outcome must be one of" in payload["error"]
 
 
 def test_similar_causes_asks_memory_for_this_workspace_and_this_runs_workflow(store, monkeypatch):
@@ -378,3 +420,20 @@ def test_a_model_outage_is_a_plain_502(client):
     client.holder["model"].messages.create = down
     res = post(client)
     assert res.status_code == 502 and "could not reach the model" in res.json()["detail"]
+
+
+def test_a_rejected_key_shows_the_user_a_plain_message_and_the_log_the_real_cause(caplog):
+    import logging
+
+    from anthropic import AuthenticationError
+
+    async def rejected(**_):
+        raise AuthenticationError("invalid x-api-key", response=httpx.Response(401, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")), body=None)
+
+    model = FakeModel([text("x")])
+    model.messages.create = rejected
+    with caplog.at_level(logging.WARNING, logger="app.assistant.service"):
+        with pytest.raises(service.AssistantError) as raised:
+            ask(model, "a private question about zebra-42")
+    assert "could not reach the model" in str(raised.value) and "401" not in str(raised.value)
+    assert "AuthenticationError, status 401" in caplog.text and "zebra-42" not in caplog.text  # the class and status, never the question

@@ -145,9 +145,12 @@ def bm25_ids(query=QUERY, k=10):
     return [c.id for c, _ in docs_index().search(query, k)]
 
 
-def test_the_two_extras_are_off_by_default_until_the_evaluation_has_shown_they_help():
-    assert config.ASSISTANT_DOCS_MEMORY is False and config.ASSISTANT_RERANK is False
-    assert [c.id for c in run(search_passages(QUERY, 4))] == bm25_ids()[:4]
+def test_the_rerank_is_on_and_agent_memory_is_off_by_default_as_the_evaluation_showed():
+    assert config.ASSISTANT_RERANK is True and config.ASSISTANT_DOCS_MEMORY is False
+    assert [c.id for c in run(search_passages(QUERY, 4))] == bm25_ids()[:4]  # no model client, so nothing can rerank
+    model = FakeModel([use("order_passages", {"order": [2, 1]})])
+    got = [c.id for c in run(search_passages(QUERY, 4, client=model))]  # with a client, the default reranks
+    assert len(model.calls) == 1 and got[:2] == [bm25_ids()[1], bm25_ids()[0]]
 
 
 def test_memory_results_are_merged_into_the_bm25_ranking(monkeypatch):
@@ -217,5 +220,6 @@ def test_the_question_file_is_sound_and_bm25_stays_at_its_measured_level():
     for q in questions:  # a doc that is renamed would otherwise score every question about it as a miss
         assert all(any(i.startswith(p) for i in ids) for p in q.expected), q.text
     scores = summarize([first_hit_rank([c.id for c, _ in docs_index().search(q.text, 10)], q.expected) for q in questions])
-    # Measured on 2 Nov 2026: hit@1 13/20, hit@3 16/20, MRR 0.736. These floors only catch a regression; they are not a claim.
+    # Measured 23 Nov 2026 with 45 passages: hit@1 12/20, hit@3 16/20, MRR 0.711 (13/20, 16/20, 0.736 before one sentence was added to
+    # docs/integrations.md). These floors only catch a regression; they are not a claim.
     assert scores["hit_at_3"] >= 15 and scores["mrr"] >= 0.70

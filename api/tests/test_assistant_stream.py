@@ -10,6 +10,7 @@ import pytest
 from anthropic import APIConnectionError
 from fastapi.testclient import TestClient
 
+from app import config
 from app.assistant import service
 from app.config import ASSISTANT_DAILY_QUESTIONS, ASSISTANT_MODEL
 from app.main import app
@@ -22,6 +23,13 @@ GOOD = "Add a webhook [doc:docs/integrations.md#6-failure-alerts-slack-or-any-ad
 
 def run(coro):
     return asyncio.run(coro)
+
+
+@pytest.fixture(autouse=True)
+def no_rerank(monkeypatch):
+    """These tests script the model's replies in order, and a rerank call made by the docs search would take one of them.
+    The rerank itself is tested in test_assistant_search.py, and its default is checked there."""
+    monkeypatch.setattr(config, "ASSISTANT_RERANK", False)
 
 
 class _Live:

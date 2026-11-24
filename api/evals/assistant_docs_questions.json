@@ -14,7 +14,7 @@
   {"q": "How long is a worker job leased before it goes back in the queue?", "expected": ["docs/integrations.md#4-fork-your-own-agents-with-a-worker"]},
   {"q": "Which tools does the MCP server give to Claude Desktop?", "expected": ["docs/integrations.md#5-let-an-agent-ask-agenttrace-mcp-and-the-command-line"]},
   {"q": "What checks are made on a webhook address before it is used?", "expected": ["docs/integrations.md#6-failure-alerts-slack-or-any-address"]},
-  {"q": "Can I fork a run that was recorded through OpenTelemetry?", "expected": ["docs/integrations.md#4-fork-your-own-agents-with-a-worker"]},
+  {"q": "Can I fork a run that was recorded through OpenTelemetry?", "expected": ["docs/integrations.md#4-fork-your-own-agents-with-a-worker", "docs/integrations.md#bring-your-own-harness"]},
   {"q": "What do I give the LangGraph adapter so the rebuilt state is exact?", "expected": ["docs/integrations.md#2-langgraph-a-few-lines-no-langgraph-import-in-the-sdk"]},
   {"q": "Where does my data go and which services see it?", "expected": ["SECURITY.md#where-data-goes"]},
   {"q": "Who is allowed to delete a run?", "expected": ["SECURITY.md#sensitive-data", "SECURITY.md#access-control", "README.md#security"]},

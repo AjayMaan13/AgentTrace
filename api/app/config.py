@@ -30,10 +30,12 @@ ASSISTANT_MAX_TURNS = 5  # model calls per question, tool rounds included
 ASSISTANT_MAX_TOKENS = 1500  # per model call
 ASSISTANT_TOKEN_CEILING = 40_000  # input plus output across one question
 ASSISTANT_DAILY_QUESTIONS = 100  # per user per UTC day
-# Two ways to improve the docs search beyond BM25. Both are off until scripts/assistant_eval.py shows they help:
-# each costs a network call (Agent Memory) or a model call (rerank) on every search.
+# Two ways to improve the docs search beyond BM25, each measured by scripts/assistant_eval.py on 20 questions (23 Nov 2026):
+# BM25 alone MRR 0.721; with a Haiku rerank on top 0.808 for about half a second more per search, so the rerank is on.
+# Agent Memory alone scored 0.842 and merged with BM25 plus the rerank 0.925, but one Agent Memory recall took 6 to 8 seconds,
+# so that stays off for the interactive assistant. The rerank needs a model client, so only the assistant uses it.
 ASSISTANT_DOCS_MEMORY = False  # also recall passages from Agent Memory and merge the two rankings
-ASSISTANT_RERANK = False  # let Haiku reorder the best candidates
+ASSISTANT_RERANK = True  # let Haiku reorder the best candidates
 ASSISTANT_POOL = 10  # candidates kept for merging and reranking
 
 DB_CONNECT_TIMEOUT_S = 5.0

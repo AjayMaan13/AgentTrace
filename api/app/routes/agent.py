@@ -120,4 +120,4 @@ async def search_docs(
     """Passages of the AgentTrace documentation that answer a question, best first (BM25 over the public docs; no workspace
     data is searched). It still needs a read key, so the call is limited and attributable like every other one here."""
     chunks = await search_passages(q.strip(), 4)
-    return {"results": [{"cite": f"doc:{c.id}", "source": c.source, "heading": c.heading, "text": c.text[:1200]} for c in chunks]}
+    return {"results": [{"cite": f"doc:{c.id}", "source": c.source, "heading": c.heading, "text": c.text} for c in chunks]}

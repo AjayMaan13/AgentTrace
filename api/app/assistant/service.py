@@ -27,8 +27,9 @@ SYSTEM = """\
 You are Ask AgentTrace, the assistant inside AgentTrace, a debugger for multi-agent LLM workflows. You answer \
 questions about how AgentTrace works and about the runs in the user's own workspace. Use only what your tools return.
 
-Your tools are search_docs, get_run, list_failed_runs and similar_causes. All of them only read. Use search_docs for \
-how-to questions and get_run for questions about a run. When the user is viewing a run, its id is in a <context> block.
+Your tools are search_docs, get_run, list_runs, list_failed_runs and similar_causes. All of them only read. Use search_docs \
+for how-to questions, get_run for questions about one run, and list_runs to count runs or to find runs of a workflow or outcome. \
+When the user is viewing a run, its id is in a <context> block.
 
 Citations: every tool result has "cite" values such as doc:README.md#architecture or run:<id>#3. Support each claim by \
 writing its cite value in square brackets exactly as given, for example [doc:docs/self-host.md#steps]. Cite only values \
@@ -88,6 +89,7 @@ def _result(answer: str, sources: dict[str, Any], tokens: tuple[int, int], calls
 STATUS = {
     "search_docs": "Searching the docs",
     "get_run": "Reading the run",
+    "list_runs": "Looking at runs",
     "list_failed_runs": "Looking at failed runs",
     "similar_causes": "Checking past causes",
 }
@@ -127,6 +129,8 @@ async def ask_events(
             else:
                 response = await client.messages.create(**kwargs)
         except APIError as exc:
+            # The user sees one plain message; whoever runs the server needs the class and status (a 401 means the key was rejected).
+            log.warning("assistant model call failed: %s, status %s", type(exc).__name__, getattr(exc, "status_code", None))
             raise AssistantError("The assistant could not reach the model. Try again in a minute.") from exc
         tokens_in += response.usage.input_tokens
         tokens_out += response.usage.output_tokens

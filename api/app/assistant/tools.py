@@ -40,6 +40,20 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "list_runs",
+        "description": "The most recent recorded runs in this workspace, newest first, optionally only one workflow and/or one outcome "
+                       "(pass, fail, error, or unjudged for a run no check has judged). Also says how many runs match in all. "
+                       "Use it to count runs or to find the other runs of a workflow, including the ones that passed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workflow": {"type": "string"},
+                "outcome": {"type": "string", "enum": ["pass", "fail", "error", "unjudged"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+        },
+    },
+    {
         "name": "list_failed_runs",
         "description": "The most recent recorded runs in this workspace whose check failed or crashed, newest first.",
         "input_schema": {
@@ -86,7 +100,7 @@ async def execute(
         return {"error": "the arguments must be an object"}, {}, True
     if name == "search_docs":
         return await _search_docs(args, client, usage)
-    handler = {"get_run": _get_run, "list_failed_runs": _list_failed, "similar_causes": _similar}[name]
+    handler = {"get_run": _get_run, "list_runs": _list_runs, "list_failed_runs": _list_failed, "similar_causes": _similar}[name]
     return await handler(args, workspace)
 
 
@@ -110,7 +124,7 @@ async def _search_docs(args: dict[str, Any], client: Any, usage: Usage | None) -
     for chunk in chunks:
         ref, source = _source("doc", chunk.id, f"{chunk.source}: {chunk.heading}", chunk.text)
         sources[ref] = source
-        results.append({"cite": ref, "source": chunk.source, "heading": chunk.heading, "text": chunk.text[:1200]})
+        results.append({"cite": ref, "source": chunk.source, "heading": chunk.heading, "text": chunk.text})  # the whole passage: a clip once cut the answer off
     if not results:
         return {"results": [], "message": "No passage of the documentation matched."}, {}, False
     return {"results": results}, sources, False
@@ -139,6 +153,32 @@ async def _get_run(args: dict[str, Any], workspace: str) -> tuple[Any, dict[str,
         "note": NOTE, "cite": ref, "id": run_id, "workflow": run["workflow"], "outcome": run.get("outcome"),
         "verdict": (run.get("oracle_detail") or {}).get("verdict"), "steps": steps, "steps_total": len(run["steps"]),
     }
+    return payload, sources, False
+
+
+OUTCOMES = ("pass", "fail", "error", "unjudged")
+
+
+async def _list_runs(args: dict[str, Any], workspace: str) -> tuple[Any, dict[str, Source], bool]:
+    workflow = _text_arg(args, "workflow", 100)
+    outcome = args.get("outcome")
+    if outcome is not None and outcome not in OUTCOMES:
+        return {"error": f"outcome must be one of {list(OUTCOMES)}"}, {}, True
+    limit = args.get("limit", 10)
+    limit = limit if isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 20 else 10
+    runs = await db.list_runs(workspace, 200, "recorded")  # the 200 most recent: older runs are not looked at
+    matching = [
+        r for r in runs
+        if (workflow is None or r.get("workflow") == workflow)
+        and (outcome is None or (r.get("outcome") is None if outcome == "unjudged" else r.get("outcome") == outcome))
+    ]
+    sources: dict[str, Source] = {}
+    rows = []
+    for r in matching[:limit]:
+        ref, source = _source("run", r["id"], f"run {r['id'][:8]}")
+        sources[ref] = source
+        rows.append({"cite": ref, "id": r["id"], "workflow": r.get("workflow"), "started_at": r.get("started_at"), "outcome": r.get("outcome")})
+    payload = {"note": NOTE, "runs": rows, "matching_in_total": len(matching), "looked_at": len(runs)}
     return payload, sources, False
 
 
