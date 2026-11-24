@@ -16,6 +16,7 @@ from typing import Any
 
 from anthropic import APIError
 
+from app.assistant.search import Usage
 from app.assistant.tools import TOOLS, execute
 from app.config import ASSISTANT_EFFORT, ASSISTANT_MAX_TOKENS, ASSISTANT_MAX_TURNS, ASSISTANT_MODEL, ASSISTANT_TOKEN_CEILING
 
@@ -90,6 +91,7 @@ async def ask(workspace: str, question: str, run_id: str | None, client: Any) ->
     sources: dict[str, Any] = {}
     tokens_in = tokens_out = calls = 0
     corrected = False
+    usage = Usage()  # model tokens spent inside tools (reranking)
 
     for turn in range(ASSISTANT_MAX_TURNS):
         last = turn == ASSISTANT_MAX_TURNS - 1
@@ -109,8 +111,11 @@ async def ask(workspace: str, question: str, run_id: str | None, client: Any) ->
         if uses:
             if last or over_budget:
                 break
-            outcomes = await asyncio.gather(*(execute(u.name, u.input, workspace) for u in uses))
+            outcomes = await asyncio.gather(*(execute(u.name, u.input, workspace, client, usage) for u in uses))
             calls += len(uses)
+            extra_in, extra_out = usage.take()
+            tokens_in += extra_in
+            tokens_out += extra_out
             results = []
             for use, (payload, found, is_error) in zip(uses, outcomes, strict=True):
                 sources.update(found)

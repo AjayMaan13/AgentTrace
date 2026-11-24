@@ -55,6 +55,11 @@ def _open() -> AsyncMemory | None:
                        timeout=20.0, max_retries=2)
 
 
+def open_memory() -> AsyncMemory | None:
+    """A client for the configured Agent Memory context, or None when it is not configured. The caller closes it."""
+    return _open()
+
+
 def is_verified(control: dict[str, int], treatment: dict[str, int]) -> bool:
     """Worth remembering: the edit helped (a higher pass rate than control) and passed at least
     MIN_TREATMENT_PASSES runs. Small N is directional, so this stays deliberately modest."""
